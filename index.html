@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portfell</title>
+<meta name="theme-color" content="#0f141b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f141b; --surface:#161c25; --raised:#1e2631; --line:#28323f; --line-soft:#1f2732;
+    --text:#e9edf3; --muted:#93a0b1; --faint:#63708280;
+    --gold:#f5c04e; --blue:#60a5fa; --up:#45c97f; --down:#f26d6a;
+    --s-value:#bb8820; --s-paid:#4a8fec;          /* graafiku jooned (kontrollitud tumedal taustal) */
+    --r-lg:18px; --r-md:12px; --r-sm:8px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  .wrap{max-width:880px;margin:0 auto;padding:14px 16px 56px}
+  .up{color:var(--up)} .down{color:var(--down)} .muted{color:var(--muted)}
+
+  /* ülariba */
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .bar h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .bar .grow{flex:1}
+  .seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+  .seg button{border:0;background:none;color:var(--muted);padding:6px 13px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap}
+  .seg button[aria-pressed="true"]{background:var(--raised);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+  .btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:500}
+  .btn.icon{width:38px;height:38px;padding:0;display:grid;place-items:center;color:var(--muted)}
+  .btn.icon svg{width:17px;height:17px}
+  .btn.icon.busy svg{animation:spin .9s linear infinite}
+  .btn.primary{background:var(--gold);border-color:var(--gold);color:#1a1405;font-weight:600}
+  .btn.primary:disabled{opacity:.45;cursor:not-allowed}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .nav{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:22px}
+  .nav button{border:0;background:none;color:var(--muted);padding:9px 0 10px;font-size:14.5px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .nav button[aria-pressed="true"]{color:var(--text);border-bottom-color:var(--gold)}
+
+  /* kangelane: summa + graafik */
+  .hero-top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
+  .hero .lbl{color:var(--muted);font-size:13px}
+  .total{font-size:clamp(38px,10vw,56px);font-weight:600;letter-spacing:-.035em;line-height:1.02;color:var(--gold)}
+  .total small{font-size:.5em;font-weight:500;letter-spacing:0;margin-left:.12em;opacity:.8}
+  .today{text-align:right;padding-bottom:6px}
+  .today b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em}
+  .today span{font-size:13px}
+  .chart-ctl{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:18px 0 8px;flex-wrap:wrap}
+  .legend{display:flex;gap:16px;font-size:12.5px;color:var(--muted);margin:0 0 4px;min-height:18px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  .legend b{color:var(--text);font-weight:500;margin-left:5px}
+  #chart,#day{position:relative;touch-action:pan-y}
+  #chart svg,#day svg{display:block;width:100%;overflow:visible}
+  :is(#chart,#day) .tip{position:absolute;top:0;pointer-events:none;background:var(--raised);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:8px 10px;font-size:12.5px;line-height:1.5;white-space:nowrap;box-shadow:0 8px 24px #0008;display:none}
+  :is(#chart,#day) .tip strong{display:block;font-weight:600;margin-bottom:2px}
+  :is(#chart,#day) .tip span{color:var(--muted);margin-right:8px}
+  :is(#chart,#day) .tip div{display:flex;justify-content:space-between}
+  .empty{color:var(--muted);font-size:13.5px;padding:34px 0;text-align:center;margin:0}
+  details.tbl{margin-top:6px;font-size:12.5px;color:var(--muted)}
+  details.tbl summary{cursor:pointer;width:max-content}
+  details.tbl table{margin-top:8px;max-width:520px}
+
+  /* näitajad: joontega eraldatud, mitte kaardid */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);margin:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stats > div{padding:14px 14px 14px 0}
+  .stats > div + div{padding-left:14px;border-left:1px solid var(--line)}
+  .stats dt{color:var(--muted);font-size:12.5px;margin:0 0 3px}
+  .stats dd{margin:0;font-size:19px;font-weight:600;letter-spacing:-.02em}
+  .stats dd small{display:block;font-size:12.5px;font-weight:400;letter-spacing:0;color:var(--muted);margin-top:1px}
+  .split{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:var(--muted);padding:10px 0 0}
+  .split b{color:var(--text);font-weight:500;margin-left:6px}
+  @media (max-width:640px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .stats > div:nth-child(3){padding-left:0;border-left:0}
+    .stats > div:nth-child(n+3){border-top:1px solid var(--line)}
+  }
+
+  /* jaotised */
+  .sec{margin-top:34px}
+  .sec-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .sec-h h2{font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .fold-b{border:0;background:none;padding:4px 0;font:inherit;letter-spacing:inherit;display:inline-flex;align-items:center;gap:7px}
+  .fold-b svg{width:15px;height:15px;color:var(--muted);transition:transform .15s}
+  .fold.kinni .fold-b svg{transform:rotate(-90deg)}
+  .fold.kinni .sec-h{margin-bottom:0}
+  .fold.kinni{padding-bottom:12px;border-bottom:1px solid var(--line-soft)}
+  .sec.fold.kinni{margin-top:12px}
+  .sec.fold.kinni + .sec.fold:not(.kinni){margin-top:26px}
+  .sec-h p.fold-s{font-size:13.5px;text-align:right}
+  .fold-s b{font-weight:600;color:var(--text)} .fold-s b.gold{color:var(--gold)} .fold-s b.up{color:var(--up)} .fold-s b.down{color:var(--down)}
+  .sec-h p{margin:0;font-size:12.5px;color:var(--muted)}
+
+  /* kaart (heatmap) */
+  #heat{position:relative;width:100%;height:min(86vw,430px);border-radius:var(--r-md);overflow:hidden;background:#000}
+  .tile{position:absolute;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    color:#fff;text-align:center;border:0;padding:0;border-radius:4px;line-height:1.1;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+  .tile b{font-weight:700;letter-spacing:-.01em}
+  .tile span{opacity:.92}
+  .scale{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:8px}
+  .scale i{flex:0 0 120px;height:6px;border-radius:3px}
+
+  /* tabelid */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:10px 0 10px 10px;text-align:right;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th:first-child,td:first-child{text-align:left;padding-left:0}
+  th{color:var(--muted);font-weight:500;font-size:12.5px;border-bottom-color:var(--line);white-space:nowrap}
+  th button{border:0;background:none;color:inherit;padding:0;font-weight:inherit}
+  th button[aria-sort]:not([aria-sort="none"]){color:var(--text)}
+  td small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+  td.nm b{font-weight:600}
+  td.val{color:var(--blue);font-weight:500}
+  tr.row{cursor:pointer}
+  tr.row:hover td{background:#ffffff06}
+  tr.sum td{border-bottom:0;border-top:1px solid var(--line);font-weight:600;padding-top:12px}
+  tr.det td{padding:0 0 14px;border-bottom:1px solid var(--line-soft)}
+  .detbox{background:var(--surface);border-radius:var(--r-md);padding:14px;text-align:left}
+  .detgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 16px}
+  .detgrid div span{display:block;color:var(--muted);font-size:12px}
+  .detgrid div b{font-weight:500}
+  .range{margin-top:14px;font-size:12px;color:var(--muted)}
+  .range .track{position:relative;height:4px;border-radius:2px;background:var(--line);margin:7px 0 5px}
+  .range .track i{position:absolute;top:-4px;width:12px;height:12px;border-radius:50%;background:var(--text);border:2px solid var(--surface);transform:translateX(-50%)}
+  .range .ends{display:flex;justify-content:space-between}
+  .detact{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+  .badge{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;background:#f5c04e22;color:var(--gold);margin-left:6px;font-weight:500;vertical-align:1px}
+  @media (max-width:560px){
+    table{font-size:13.5px}
+    .col-yr{display:none}
+    .detgrid{grid-template-columns:repeat(2,1fr)}
+  }
+
+  /* päeva võrdlus turuga */
+  .cmp{display:grid;grid-template-columns:max-content 1fr max-content;gap:9px 12px;align-items:center;font-size:14px}
+  .cmp .bar2{position:relative;height:14px;background:linear-gradient(var(--line),var(--line)) center/1px 100% no-repeat}
+  .cmp .bar2 i{position:absolute;top:2px;bottom:2px;border-radius:3px;min-width:2px}
+  .cmp .v{text-align:right;font-weight:500}
+  .cmp small{color:var(--muted);font-size:12px;margin-left:6px}
+  .cmp-note{font-size:13.5px;color:var(--muted);margin:12px 0 0}
+  .cmp-note b{color:var(--text);font-weight:500}
+  .clicky{cursor:pointer}
+  .clicky:hover dt,.clicky:hover td:first-child b{text-decoration:underline;text-underline-offset:3px}
+
+  /* seaded */
+  .set{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:14px}
+  .set h3{font-size:15px;font-weight:600;margin:0 0 4px}
+  .set p{margin:0 0 12px;font-size:13.5px;color:var(--muted)}
+  .set .line{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .set .line span{flex:0 0 68px;font-size:14px}
+  .set input{flex:1 1 90px;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;font-size:16px}
+  .set input:focus{border-color:var(--blue);outline:0}
+  .yr-s,.yr-m{}
+  @media (max-width:560px){ .yr-s{display:none} }
+
+  /* vara jaotus */
+  .vara{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+  .vara svg{flex:0 0 auto}
+  .varalist{list-style:none;margin:0;padding:0;flex:1 1 220px;min-width:0}
+  .varalist li{display:grid;grid-template-columns:12px 1fr auto 52px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:14.5px}
+  .varalist li i{width:12px;height:12px;border-radius:3px}
+  .varalist li b{font-weight:500}
+  .varalist li.edit label input{flex:none;width:100%}
+  .varalist li em{display:inline-block;width:100%;font-style:normal;font-size:12.5px;color:var(--muted);margin-top:1px}
+  .varalist li em.up,.varalist li em .up{color:var(--up)} .varalist li em.down,.varalist li em .down{color:var(--down)}
+  .varalist li.edit label{flex:1 1 130px;font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+  .varalist li small{color:var(--muted);text-align:right;font-size:13px}
+  .varalist li.clicky:hover span{text-decoration:underline;text-underline-offset:3px}
+  .varalist li.edit{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0 14px}
+  .varalist li.edit input,.varauus input{flex:1 1 110px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;font-size:16px}
+  .varauus{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .btn.danger{color:var(--down);border-color:#f26d6a55}
+  .btn.link{border:0;background:none;padding:0;color:var(--blue);font-size:inherit}
+  .juhend summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+  .juhend summary::-webkit-details-marker{display:none}
+  .juhend summary::before{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;margin:0 4px 2px 2px}
+  .juhend[open] summary::before{transform:rotate(45deg)}
+  .juhend summary h3{margin:0}
+  .juhend > p{margin-top:12px}
+  .juhend ol{margin:0 0 14px;padding:0;list-style:none;counter-reset:s}
+  .juhend ol li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:2px 10px;padding:12px 0;border-top:1px solid var(--line-soft);font-size:14px}
+  .juhend ol li::before{content:counter(s);grid-row:1/3;width:26px;height:26px;border-radius:50%;background:var(--raised);border:1px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:600}
+  .juhend ol li b{font-weight:600}
+  .juhend ol li span{grid-column:2;color:var(--muted);line-height:1.5}
+  .juhend code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12.5px;color:var(--text)}
+  .juhend a{color:var(--blue)}
+
+  /* turg ja varad */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+  .strip > div{background:var(--surface);padding:13px 14px;min-width:0}
+  .strip span{display:block;color:var(--muted);font-size:12.5px}
+  .strip b{display:block;font-size:18px;font-weight:600;letter-spacing:-.02em;margin:1px 0}
+  .strip small{font-size:12.5px;color:var(--muted)}
+
+  /* tehingute nimekiri */
+  .tx{list-style:none;margin:0;padding:0}
+  .tx li{display:grid;grid-template-columns:86px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:14px;align-items:baseline}
+  .tx time{color:var(--muted);font-size:12.5px}
+  .tx small{color:var(--muted);font-size:12.5px;margin-left:6px}
+
+  .note{background:#f5c04e14;border:1px solid #f5c04e40;color:#f3d48d;border-radius:var(--r-md);padding:10px 12px;font-size:13.5px;margin-bottom:16px}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:36px;padding-top:14px;border-top:1px solid var(--line)}
+  .state{padding:90px 0;text-align:center;color:var(--muted)}
+  .state b{display:block;color:var(--text);font-weight:600;margin-bottom:6px}
+
+  /* tehinguvorm */
+  dialog{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:var(--r-lg);padding:0;
+    width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 24px);box-shadow:0 30px 80px #000a}
+  dialog::backdrop{background:#070a0ecc}
+  dialog form{padding:18px 18px 16px}
+  dialog header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  dialog h2{font-size:17px;font-weight:600;margin:0}
+  .x{border:0;background:none;color:var(--muted);font-size:22px;line-height:1;padding:4px 8px}
+  .types{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
+  .types button{border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:9px 2px;font-size:13px;color:var(--muted);font-weight:500}
+  .types button[aria-pressed="true"]{border-color:var(--gold);color:var(--text);background:#f5c04e14}
+  .f{margin-bottom:12px}
+  .f label{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+  .f label button{border:0;background:none;color:var(--blue);padding:0;font-size:12.5px}
+  .f input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 11px;font-size:16px}
+  .f input:focus{border-color:var(--blue);outline:0}
+  .f .hint{font-size:12.5px;color:var(--muted);margin-top:4px;min-height:17px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .sumbox{background:var(--bg);border-radius:var(--r-sm);padding:10px 12px;font-size:13.5px;margin:4px 0 12px;color:var(--muted)}
+  .sumbox b{color:var(--text);font-weight:600}
+  .sumbox div{display:flex;justify-content:space-between}
+  .err{color:var(--down);font-size:13.5px;margin:0 0 10px;min-height:0}
+  .chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-top:6px}
+  .f label.chk{justify-content:flex-start}
+  .chk input{width:auto}
+  dialog .btn.primary{width:100%;padding:12px;border-radius:var(--r-md);font-size:15px}
+  [hidden]{display:none!important}
+
+  #toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);background:var(--raised);border:1px solid var(--line);
+    padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;box-shadow:0 10px 30px #0009;max-width:calc(100vw - 32px)}
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <h1>Portfell</h1>
+    <div class="grow"></div>
+    <button class="btn icon" id="btnRefresh" aria-label="Värskenda hinnad" title="Värskenda hinnad">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button class="btn primary" id="btnAdd">Lisa tehing</button>
+  </div>
+  <div class="nav" id="nav">
+    <button type="button" data-view="portfell" aria-pressed="true">Portfell</button>
+    <button type="button" data-view="ulevaade" aria-pressed="false">Tootlus ja vara</button>
+    <button type="button" data-view="seaded" aria-pressed="false">Seaded</button>
+  </div>
+  <div id="app"><div class="state">Laen andmeid…</div></div>
+  <div class="foot" id="foot" hidden></div>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlgH">
+  <form id="frm" novalidate>
+    <header><h2 id="dlgH">Lisa tehing</h2><button type="button" class="x" id="dlgX" aria-label="Sulge">×</button></header>
+    <div class="types" id="types"></div>
+    <div class="f" id="fTicker">
+      <label for="iTicker">Väärtpaber</label>
+      <input id="iTicker" list="dl" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="nt VWRL või NKE">
+      <datalist id="dl"></datalist>
+      <div class="hint" id="hTicker"></div>
+    </div>
+    <div class="two" id="fTrade">
+      <div class="f"><label for="iKogus">Kogus <button type="button" id="bAll" hidden>Kõik</button></label><input id="iKogus" inputmode="decimal"></div>
+      <div class="f"><label for="iHind" id="lHind">Hind</label><input id="iHind" inputmode="decimal"></div>
+    </div>
+    <div class="two">
+      <div class="f" id="fSumma"><label for="iSumma" id="lSumma">Summa, €</label><input id="iSumma" inputmode="decimal"></div>
+      <div class="f" id="fTasu"><label for="iTasu">Teenustasu, €</label><input id="iTasu" inputmode="decimal" placeholder="0"></div>
+      <div class="f"><label for="iKp">Kuupäev</label><input id="iKp" type="date"></div>
+    </div>
+    <div class="f"><label for="iMarkus">Märkus</label><input id="iMarkus" maxlength="100" placeholder="valikuline"></div>
+    <div class="sumbox" id="sumbox" hidden></div>
+    <div class="f" id="fPin">
+      <label for="iPin">PIN</label>
+      <input id="iPin" type="password" inputmode="numeric" autocomplete="off">
+      <label class="chk"><input type="checkbox" id="cPin"> Jäta PIN selles seadmes meelde</label>
+    </div>
+    <p class="err" id="err" role="alert"></p>
+    <button class="btn primary" id="bSave" type="submit">Salvesta</button>
+  </form>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+// ============================================================
+// Apps Script /exec lingi saab sisestada äpis vahekaardil "Seaded" (jääb selles seadmes meelde).
+// Soovi korral võid selle ka siia kirjutada; /exec lingi kaudu avades pole seda vaja.
+var API_URL = '';
+// ============================================================
+
+var DEMO = /*DEMO*/null/*DEMO*/;
+var S = { varaTyyp:'summa', kinni:{}, data:null, p:null, view:'portfell', bm:0, mode:'v', range:'all', heat:'tana', sort:{k:'v',dir:-1}, open:null, tyyp:'Ost', busy:false, demo:false };
+var CB_N = 0;
+function $(id){ return document.getElementById(id); }
+function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k)||''; if(v===null||v==='') localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} return ''; }
+var INSIDE = typeof google!=='undefined' && google.script && google.script.run;
+try{ S.kinni=JSON.parse(store('pf_kinni')||'{}')||{}; }catch(e){ S.kinni={}; }
+function apiUrl(){ return (store('pf_api')||API_URL||'').trim(); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+// ---------- server ----------
+function api(tegevus, q, ok, fail){
+  var done = function(r){ if (r && r.viga) fail(new Error(r.viga)); else ok(r); };
+  if (INSIDE){
+    google.script.run.withSuccessHandler(done).withFailureHandler(fail).PF_api(tegevus, JSON.stringify(q||{}));
+    return;
+  }
+  var API=apiUrl(); S.demo=false;
+  if (API){
+    var base=API+(API.indexOf('?')>-1?'&':'?')+'a='+encodeURIComponent(tegevus)+'&q='+encodeURIComponent(JSON.stringify(q||{}));
+    // Varutee: JSONP (script-silt). Kasutatakse ainult siis, kui fetch ei õnnestu.
+    var jsonp=function(esimeneViga){
+      var cb='PF_cb_'+(++CB_N), tag=document.createElement('script');
+      var timer=setTimeout(function(){ clean(); fail(new Error('Server ei vastanud. Kontrolli linki vahekaardil Seaded ja et web-app on avatud kõigile, kellel on link.')); },40000);
+      function clean(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){} if(tag.parentNode) tag.parentNode.removeChild(tag); }
+      window[cb]=function(r){ clean(); done(r); };
+      tag.src=base+'&cb='+cb;
+      tag.onerror=function(){ clean(); var e=new Error('Server ei andnud andmeid.'); e.yhendus=true; e.detail=esimeneViga; fail(e); };
+      document.body.appendChild(tag);
+    };
+    // Põhitee: fetch ilma küpsisteta. Nii ei sega telefonis sisse logitud Google'i kontod (sama olukord mis inkognito aknas).
+    if (typeof fetch==='function'){
+      var ctl=typeof AbortController==='function'?new AbortController():null, t2=setTimeout(function(){ if(ctl) ctl.abort(); },40000);
+      // Sama kutse, mis bankrolli lehel: lihtne GET, brauser ise küpsiseid kaasa ei pane.
+      fetch(base+'&_='+Date.now(),{method:'GET',mode:'cors',signal:ctl?ctl.signal:undefined})
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+        .then(function(txt){ clearTimeout(t2); var j; try{ j=JSON.parse(txt); }catch(e){ throw new Error('vastus ei olnud andmed (uuenda liveapi ja tee uus versioon)'); } done(j); })
+        .catch(function(e){ clearTimeout(t2); jsonp(String(e&&e.message||e)); });
+    } else jsonp('');
+    return;
+  }
+  if (!DEMO){ S.view='seaded'; setTimeout(function(){ fail(new Error('Kleebi ülal oma /exec link ja vajuta „Salvesta link“. Siis laeb leht sinu andmed.')); },0); return; }
+  S.demo=true;
+  if (tegevus==='tehing') { setTimeout(function(){ fail(new Error('Need on näidisandmed – tehinguid siin ei salvestata.')); },200); return; }
+  setTimeout(function(){ ok(DEMO); },150);
+}
+
+// ---------- vormingud ----------
+// Eesti vorming alati tühikuga tuhandete vahel (ka 4-kohalistel): 6 962 ja 1 505,53
+function mkf(minD,maxD){ var f=new Intl.NumberFormat('en-US',{minimumFractionDigits:minD,maximumFractionDigits:maxD});
+  return { format:function(n){ return f.format(n).replace(/,/g,'\u00a0').replace('.',',').replace('-','−'); } }; }
+var nf0=mkf(0,0), nf1=mkf(1,1), nf2=mkf(2,2);
+var KUUD=['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
+function has(n){ return typeof n==='number' && isFinite(n); }
+function sign(n){ return n>0?'+':(n<0?'−':''); }
+function eur(n){ return has(n) ? (n<0?'−':'')+nf0.format(Math.abs(Math.round(n)))+' €' : '–'; }
+function eurS(n){ return has(n) ? sign(Math.round(n))+nf0.format(Math.abs(Math.round(n)))+' €' : '–'; }
+function eur2(n){ return has(n) ? (n<0?'−':'')+nf2.format(Math.abs(n))+' €' : '–'; }
+function pct(f){ if(!has(f)) return '–'; var v=f*100, a=Math.abs(v); return sign(Math.round(v*100)/100)+(a>=100?nf0.format(a):a>=10?nf1.format(a):nf2.format(a))+'%'; }
+function price(n){ if(!has(n)) return '–'; var a=Math.abs(n); return mkf(2,a<1?4:2).format(n); }
+function qty(n){ return has(n) ? mkf(0,6).format(n) : '–'; }
+function cls(n){ return has(n) ? (n>0?'up':(n<0?'down':'')) : 'muted'; }
+function ms(d){ var p=d.split('-'); return Date.UTC(+p[0],+p[1]-1,+p[2]); }
+function kp(d, lyhike){ var p=d.split('-'); return (+p[2])+'. '+KUUD[+p[1]-1]+(lyhike?'':' '+p[0]); }
+function num(s){ var v=parseFloat(String(s||'').replace(/[\s ]/g,'').replace(',','.')); return isFinite(v)?v:NaN; }
+
+// ---------- graafik ----------
+function rangePts(){
+  var a=S.data.ajalugu||[]; if(!a.length) return a;
+  var last=a[a.length-1].d;
+  if(S.range==='ytd'){ var y=last.slice(0,4), out=[], prev=null; a.forEach(function(p){ if(p.d.slice(0,4)<y) prev=p; else out.push(p); }); return prev?[prev].concat(out):out; }
+  if(S.range==='30'){ var lim=ms(last)-30*864e5; return a.filter(function(p){ return ms(p.d)>=lim; }); }
+  return a;
+}
+function niceTicks(lo,hi,n){
+  var span=hi-lo||1, raw=span/n, mag=Math.pow(10,Math.floor(Math.log10(raw))), norm=raw/mag;
+  var step=(norm<1.5?1:norm<3?2:norm<7?5:10)*mag, t=[], v=Math.ceil(lo/step)*step;
+  for(;v<=hi+1e-9;v+=step) t.push(Math.round(v/step)*step);
+  return t;
+}
+function drawChart(){
+  var box=$('chart'); if(!box) return;
+  var pts=rangePts(), lg=$('legend');
+  if(pts.length<2){ box.innerHTML='<p class="empty">Selle vahemiku graafik täitub päev-päevalt: iga õhtu lisandub üks punkt.</p>'; lg.innerHTML=''; $('tblwrap').innerHTML=''; return; }
+  var vd=S.data.vordlus||[], bmN=vd[S.bm]?vd[S.bm].kuva:'', onB=false;
+  if(S.mode==='h' && vd.length){
+    var wb=pts.filter(function(p){ return p.b && has(p.b[S.bm]); });
+    if(wb.length>=2){ pts=wb; onB=true; }
+  }
+  var W=box.clientWidth, H=W<520?210:250, m={t:12,b:24,l:0,r:0}, h0=pts[0].h, b0=onB?pts[0].b[S.bm]:1;
+  var pf=function(v){return pct(v/100);};
+  var ser = S.mode==='v'
+    ? [{k:'v',c:'var(--s-value)',n:'Väärtus',f:eur},{k:'s',c:'var(--s-paid)',n:'Sisse makstud',f:eur}]
+    : (onB ? [{k:'r',c:'var(--s-value)',n:'Portfell',f:pf},{k:'m',c:'var(--s-paid)',n:bmN,f:pf}] : [{k:'r',c:'var(--s-value)',n:'Tootlus',f:pf}]);
+  var P=pts.map(function(p){ return {d:p.d,t:ms(p.d),v:p.v,s:p.s,h:p.h,r:(p.h/h0-1)*100,m:onB?(p.b[S.bm]/b0-1)*100:0}; });
+  var lo=Infinity,hi=-Infinity; P.forEach(function(p){ ser.forEach(function(s){ lo=Math.min(lo,p[s.k]); hi=Math.max(hi,p[s.k]); }); });
+  var pad=(hi-lo||1)*0.1; lo-=pad; hi+=pad; if(S.mode==='v' && lo<0) lo=0;
+  var t0=P[0].t, t1=P[P.length-1].t;
+  var X=function(t){ return m.l+(t-t0)/(t1-t0)*(W-m.l-m.r); }, Y=function(v){ return m.t+(1-(v-lo)/(hi-lo))*(H-m.t-m.b); };
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'" role="img" aria-label="'+(S.mode==='v'?'Portfelli väärtus ja sissemaksed ajas':'Portfelli tootlus ajas')+'">';
+  niceTicks(lo,hi,4).forEach(function(v){
+    var y=Y(v); if(y<m.t+6||y>H-m.b) return;
+    svg+='<line x1="0" x2="'+W+'" y1="'+y+'" y2="'+y+'" stroke="var(--line-soft)"/>'+
+         '<text x="0" y="'+(y-5)+'" fill="var(--muted)" font-size="11.5">'+(v===0?'0':S.mode==='v'?nf0.format(v/1000)+' tuh €':sign(v)+nf0.format(Math.abs(v))+'%')+'</text>';
+  });
+  // x-telg
+  var marks=[], days=(t1-t0)/864e5;
+  if(days>500){ for(var y=new Date(t0).getUTCFullYear()+1;y<=new Date(t1).getUTCFullYear();y++) marks.push({t:Date.UTC(y,0,1),l:String(y)}); }
+  else { var n=Math.min(5,P.length); for(var i=0;i<n;i++){ var q=P[Math.round(i*(P.length-1)/(n-1))]; marks.push({t:q.t,l:kp(q.d,true)}); } }
+  var lastX=-99;
+  marks.forEach(function(k){ var x=X(k.t); if(x-lastX<52||x>W-18) return; lastX=x;
+    svg+='<text x="'+x+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11.5" text-anchor="'+(x<20?'start':'middle')+'">'+k.l+'</text>'; });
+  var path=function(k){ return P.map(function(p,i){ return (i?'L':'M')+X(p.t).toFixed(1)+' '+Y(p[k]).toFixed(1); }).join(''); };
+  if(S.mode==='v'){
+    svg+='<path d="'+path('v')+P.slice().reverse().map(function(p){ return 'L'+X(p.t).toFixed(1)+' '+Y(p.s).toFixed(1); }).join('')+'Z" fill="var(--s-value)" opacity=".13"/>';
+  }
+  ser.slice().reverse().forEach(function(s){
+    svg+='<path d="'+path(s.k)+'" fill="none" stroke="'+s.c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    if(P.length<=30) P.forEach(function(p){ svg+='<circle cx="'+X(p.t)+'" cy="'+Y(p[s.k])+'" r="3.5" fill="'+s.c+'" stroke="var(--bg)" stroke-width="2"/>'; });
+  });
+  svg+='<g id="cross" style="display:none"><line id="cl" y1="'+m.t+'" y2="'+(H-m.b)+'" stroke="var(--muted)" stroke-dasharray="3 3"/>'+
+       ser.map(function(s,i){ return '<circle id="cd'+i+'" r="5" fill="'+s.c+'" stroke="var(--text)" stroke-width="2"/>'; }).join('')+'</g></svg><div class="tip" id="tip"></div>';
+  box.innerHTML=svg;
+  var L=P[P.length-1];
+  lg.innerHTML = S.mode==='v'
+    ? ser.map(function(s){ return '<span><i style="background:'+s.c+'"></i>'+s.n+'<b>'+s.f(L[s.k])+'</b></span>'; }).join('')+'<span>Vahe on kasum<b class="'+cls(L.v-L.s)+'">'+eurS(L.v-L.s)+'</b></span>'
+    : (onB ? ser.map(function(s){ return '<span><i style="background:'+s.c+'"></i>'+esc(s.n)+'<b class="'+cls(L[s.k])+'">'+pf(L[s.k])+'</b></span>'; }).join('')+
+              '<span>Vahe<b class="'+cls(L.r-L.m)+'">'+sign(Math.round((L.r-L.m)*10)/10)+nf1.format(Math.abs(L.r-L.m))+' pp</b></span>'
+            : '<span>Tootlus ilma sissemaksete mõjuta, alates '+kp(P[0].d)+'<b class="'+cls(L.r)+'">'+pct(L.r/100)+'</b></span>'+
+              (vd.length?'<span>Indeksi ajalugu selles vahemikus puudub. Käivita Apps Scriptis PF_taidaVordlus.</span>':''));
+  var bs=$('segBm'); if(bs) bs.hidden=!(S.mode==='h'&&vd.length>1);
+  // hover
+  var tip=$('tip'), cross=$('cross');
+  function move(ev){
+    var r=box.getBoundingClientRect(), x=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left, best=0, bd=1e9;
+    P.forEach(function(p,i){ var d=Math.abs(X(p.t)-x); if(d<bd){bd=d;best=i;} });
+    var p=P[best], px=X(p.t);
+    cross.style.display=''; $('cl').setAttribute('x1',px); $('cl').setAttribute('x2',px);
+    ser.forEach(function(s,i){ var c=$('cd'+i); c.setAttribute('cx',px); c.setAttribute('cy',Y(p[s.k])); });
+    tip.innerHTML='<strong>'+kp(p.d)+'</strong>'+(S.mode==='v'
+      ? '<div><span>Väärtus</span>'+eur(p.v)+'</div><div><span>Sisse makstud</span>'+eur(p.s)+'</div><div><span>Kasum</span><b class="'+cls(p.v-p.s)+'">'+eurS(p.v-p.s)+'</b></div>'
+      : '<div><span>'+(onB?'Portfell':'Tootlus')+'</span><b class="'+cls(p.r)+'">'+pct(p.r/100)+'</b></div>'+
+        (onB?'<div><span>'+esc(bmN)+'</span><b class="'+cls(p.m)+'">'+pct(p.m/100)+'</b></div>':'<div><span>Osaku hind</span>'+nf2.format(p.h)+'</div>'));
+    tip.style.display='block';
+    var tw=tip.offsetWidth; tip.style.left=Math.max(0,Math.min(W-tw, px<W/2?px+12:px-tw-12))+'px';
+  }
+  function leave(){ cross.style.display='none'; tip.style.display='none'; }
+  box.onmousemove=move; box.onmouseleave=leave; box.ontouchstart=move; box.ontouchmove=move; box.ontouchend=leave;
+  // tabelivaade
+  var rows=P.slice(-40).reverse().map(function(p){ return '<tr><td>'+kp(p.d)+'</td><td>'+eur(p.v)+'</td><td>'+eur(p.s)+'</td><td class="'+cls(p.v-p.s)+'">'+eurS(p.v-p.s)+'</td><td>'+nf2.format(p.h)+'</td></tr>'; }).join('');
+  $('tblwrap').innerHTML='<details class="tbl"><summary>Näita tabelina</summary><table><thead><tr><th>Kuupäev</th><th>Väärtus</th><th>Sisse makstud</th><th>Kasum</th><th>Osaku hind</th></tr></thead><tbody>'+rows+'</tbody></table></details>';
+}
+
+// ---------- kaart (squarified treemap) ----------
+function layoutrow(z,x,y,dx,dy){ var c=z.reduce(function(a,b){return a+b;},0), o=[];
+  if(dx>=dy){ var w=c/dy, yy=y; z.forEach(function(s){ o.push({x:x,y:yy,dx:w,dy:s/w}); yy+=s/w; }); }
+  else { var h=c/dx, xx=x; z.forEach(function(s){ o.push({x:xx,y:y,dx:s/h,dy:h}); xx+=s/h; }); } return o; }
+function leftover(z,x,y,dx,dy){ var c=z.reduce(function(a,b){return a+b;},0);
+  if(dx>=dy){ var w=c/dy; return {x:x+w,y:y,dx:dx-w,dy:dy}; } var h=c/dx; return {x:x,y:y+h,dx:dx,dy:dy-h}; }
+function worst(z,x,y,dx,dy){ return Math.max.apply(null,layoutrow(z,x,y,dx,dy).map(function(t){return Math.max(t.dx/t.dy,t.dy/t.dx);})); }
+function squarify(z,x,y,dx,dy){ if(!z.length) return []; if(z.length===1) return layoutrow(z,x,y,dx,dy);
+  var i=1; while(i<z.length && worst(z.slice(0,i),x,y,dx,dy)>=worst(z.slice(0,i+1),x,y,dx,dy)) i++;
+  var lo=leftover(z.slice(0,i),x,y,dx,dy); return layoutrow(z.slice(0,i),x,y,dx,dy).concat(squarify(z.slice(i),lo.x,lo.y,lo.dx,lo.dy)); }
+var HEAT={ tana:{k:'tanaPr',cap:.04,n:'täna'}, nadal:{k:'nadalPr',cap:.10,n:'nädalaga'}, aasta:{k:'aastaPr',cap:.50,n:'sel aastal'} };
+// Stonksmaileri värvid: hele = väike liikumine, tume = suur
+var G0=[165,214,167], G1=[24,90,32], R0=[239,154,154], R1=[176,28,28];
+function heatColor(f,cap){ if(!has(f)) return 'rgb(84,94,108)';
+  var t=Math.sqrt(Math.min(Math.abs(f),cap)/cap), a=f>=0?G0:R0, b=f>=0?G1:R1;
+  return 'rgb('+a.map(function(v,i){return Math.round(v+(b[i]-v)*t);}).join(',')+')'; }
+function drawHeat(){
+  var box=$('heat'); if(!box) return;
+  var W=box.clientWidth, H=box.clientHeight, cfg=HEAT[S.heat]; box.innerHTML='';
+  var ps=S.data.pos.filter(function(p){return p.v>0;}).sort(function(a,b){return b.v-a.v;});
+  var tot=ps.reduce(function(a,p){return a+p.v;},0); if(!tot) return;
+  squarify(ps.map(function(p){return p.v/tot*W*H;}),0,0,W,H).forEach(function(r,i){
+    var p=ps[i], el=document.createElement('button'), s=Math.min(r.dx,r.dy), fs=Math.max(9.5,Math.min(19,s*0.24));
+    el.type='button'; el.className='tile';
+    el.style.cssText='left:'+(r.x+.75)+'px;top:'+(r.y+.75)+'px;width:'+Math.max(0,r.dx-1.5)+'px;height:'+Math.max(0,r.dy-1.5)+'px;background:'+heatColor(p[cfg.k],cfg.cap);
+    el.title=p.kuva+': '+pct(p[cfg.k])+' '+cfg.n+', väärtus '+eur(p.v)+' ('+pct(p.osakaal).replace('+','')+' portfellist)';
+    el.innerHTML=(s>24&&r.dx>fs*p.kuva.length*0.62?'<b style="font-size:'+fs+'px">'+esc(p.kuva)+'</b>':'')+(s>44?'<span style="font-size:'+(fs*0.72)+'px">'+pct(p[cfg.k])+'</span>':'');
+    el.onclick=function(){ S.open=p.t; drawTable(); var tr=document.querySelector('tr.det'); if(tr) tr.scrollIntoView({block:'center',behavior:'smooth'}); };
+    box.appendChild(el);
+  });
+  $('scale').innerHTML='<span>'+pct(-cfg.cap)+'</span><i style="background:linear-gradient(90deg,rgb('+R1+'),rgb('+R0+') 50%,rgb('+G0+') 50%,rgb('+G1+'))"></i><span>'+pct(cfg.cap)+' '+cfg.n+'</span>';
+}
+
+// ---------- positsioonide tabel ----------
+var COLS=[{k:'kuva',n:'Nimi'},{k:'tanaPr',n:'Täna'},{k:'v',n:'Väärtus'},{k:'kasum',n:'Kasum'},{k:'aastaPr',n:new Date().getFullYear(),c:'col-yr'}];
+function drawTable(){
+  var d=S.data, k=S.sort.k, dir=S.sort.dir;
+  var ps=d.pos.slice().sort(function(a,b){ var x=a[k], y=b[k];
+    if(k==='kuva') return String(x).localeCompare(String(y),'et')*dir;
+    return ((has(x)?x:-1e18)-(has(y)?y:-1e18))*dir; });
+  var head='<tr>'+COLS.map(function(c){ var on=S.sort.k===c.k;
+    return '<th class="'+(c.c||'')+'"><button type="button" data-sort="'+c.k+'" aria-sort="'+(on?(S.sort.dir>0?'ascending':'descending'):'none')+'">'+c.n+(on?(S.sort.dir>0?' ↑':' ↓'):'')+'</button></th>'; }).join('')+'</tr>';
+  var body=ps.map(function(p){
+    var row='<tr class="row" data-t="'+esc(p.t)+'" tabindex="0" aria-expanded="'+(S.open===p.t)+'">'+
+      '<td class="nm"><b>'+esc(p.kuva)+'</b>'+(p.ok?'':'<span class="badge">vana hind</span>')+'<small>'+price(p.hind)+' '+esc(p.val)+'</small></td>'+
+      '<td class="'+cls(p.tanaPr)+'">'+pct(p.tanaPr)+'<small>'+eurS(p.tana)+'</small></td>'+
+      '<td class="val">'+eur(p.v)+'<small>'+(has(p.osakaal)?nf1.format(p.osakaal*100)+'%':'')+'</small></td>'+
+      '<td class="'+cls(p.kasum)+'">'+eurS(p.kasum)+'<small>'+pct(p.kasumPr)+'</small></td>'+
+      '<td class="col-yr '+cls(p.aastaPr)+'">'+pct(p.aastaPr)+'</td></tr>';
+    if(S.open===p.t){
+      var pos52=has(p.min52)&&has(p.max52)&&p.max52>p.min52?Math.max(0,Math.min(100,(p.hind-p.min52)/(p.max52-p.min52)*100)):null;
+      row+='<tr class="det"><td colspan="5"><div class="detbox">'+
+        '<div class="muted" style="font-size:12.5px;margin-bottom:10px">'+esc(p.nimi||p.kuva)+' ('+esc(p.t)+')</div>'+
+        '<div class="detgrid">'+
+          '<div><span>Kogus</span><b>'+qty(p.kogus)+'</b></div>'+
+          '<div><span>Keskmine ostuhind</span><b>'+price(p.ost)+' '+esc(p.val)+'</b></div>'+
+          '<div><span>Soetusmaksumus</span><b>'+eur(p.soetus)+'</b></div>'+
+          '<div><span>Nädalaga</span><b class="'+cls(p.nadalPr)+'">'+pct(p.nadalPr)+'</b></div>'+
+          '<div><span>Sel aastal</span><b class="'+cls(p.aastaPr)+'">'+pct(p.aastaPr)+'</b></div>'+
+        '</div>'+
+        (pos52!==null?'<div class="range">52 nädala vahemik<div class="track"><i style="left:'+pos52+'%"></i></div><div class="ends"><span>'+price(p.min52)+'</span><span>'+price(p.max52)+'</span></div></div>':'')+
+        '<div class="detact"><button type="button" class="btn" data-act="Ost" data-tk="'+esc(p.t)+'">Osta juurde</button><button type="button" class="btn" data-act="Müük" data-tk="'+esc(p.t)+'">Müü</button><button type="button" class="btn" data-act="Dividend" data-tk="'+esc(p.t)+'">Lisa dividend</button></div>'+
+      '</div></td></tr>';
+    }
+    return row;
+  }).join('');
+  var c=d.kokku;
+  $('ptable').innerHTML='<thead>'+head+'</thead><tbody>'+body+
+    '<tr class="clicky" data-cash="1" title="Paranda raha jääki"><td class="nm"><b>Vaba raha</b><small>vajuta jäägi parandamiseks</small></td><td></td><td class="val">'+eur(c.raha)+'<small>'+(c.vaartus>0?nf1.format(c.raha/c.vaartus*100)+'%':'')+'</small></td><td></td><td class="col-yr"></td></tr>'+
+    '<tr class="sum"><td>Kokku</td><td class="'+cls(c.tana)+'">'+pct(c.tanaPr)+'<small>'+eurS(c.tana)+'</small></td><td class="val">'+eur(c.vaartus)+'</td><td class="'+cls(c.realiseerimata)+'">'+eurS(c.realiseerimata)+'</td><td class="col-yr '+cls(c.aastaPr)+'">'+pct(c.aastaPr)+'</td></tr></tbody>';
+}
+
+// ---------- kogu vaade ----------
+function segHtml(id, opts, cur){ return '<div class="seg" id="'+id+'" role="group">'+opts.map(function(o){ return '<button type="button" data-v="'+o[0]+'" aria-pressed="'+(o[0]===cur)+'">'+o[1]+'</button>'; }).join('')+'</div>'; }
+// ---------- turu lahtiolek (Tallinna aja järgi, ligikaudne) ----------
+function onFutuur(t){ return /=F$/.test(t); }
+function turuSeis(){
+  var o={}; try{
+    var p=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Tallinn',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()), m={};
+    p.forEach(function(x){ m[x.type]=x.value; });
+    var too=['Mon','Tue','Wed','Thu','Fri'].indexOf(m.weekday)>=0, min=(+m.hour%24)*60+(+m.minute);
+    o.us=too&&min>=990&&min<1380;     // USA börs 16.30–23.00
+    o.fut=too&&min>=60;               // futuur kaupleb tööpäeviti peaaegu ööpäev läbi
+  }catch(e){}
+  return o;
+}
+
+// ---------- päeva graafik: portfell vs S&P 500 (futuur, kui börs on kinni) ----------
+function drawDay(){
+  var box=$('day'), lg=$('dayLg'); if(!box) return;
+  var d=S.data, J=(d.paevaJoon||[]).filter(function(x){ return has(x.p); }), tk=d.paevaTickerid||[];
+  var bi=-1; tk.forEach(function(t,i){ if(onFutuur(t)&&J.some(function(x){ return has(x.b[i]); })) bi=i; });
+  if(bi<0) tk.forEach(function(t,i){ if(bi<0&&J.some(function(x){ return has(x.b[i]); })) bi=i; });
+  if(J.length<2){ box.innerHTML='<p class="empty">Päeva graafik täitub iga 15 minuti järel, kui hinnad uuenevad.</p>'; lg.innerHTML=''; return; }
+  var nimi=''; (d.paev||[]).forEach(function(x){ if(x.t===tk[bi]) nimi=x.kuva; });
+  var ser=[{k:'p',c:'var(--s-value)',n:'Portfell'}]; if(bi>=0) ser.push({k:'b',c:'var(--s-paid)',n:nimi||'S&P 500'});
+  var P=J.map(function(x){ return {m:x.m,p:x.p*100,b:bi>=0&&has(x.b[bi])?x.b[bi]*100:null}; });
+  var W=box.clientWidth, H=170, mt=10, mb=22, x0=Math.min(P[0].m,480), x1=Math.max(P[P.length-1].m,1410);
+  var lo=0, hi=0; P.forEach(function(q){ ser.forEach(function(s){ if(q[s.k]!==null){ lo=Math.min(lo,q[s.k]); hi=Math.max(hi,q[s.k]); } }); });
+  var pad=Math.max((hi-lo)*0.15,0.1); lo-=pad; hi+=pad;
+  var X=function(m){ return (m-x0)/(x1-x0)*W; }, Y=function(v){ return mt+(1-(v-lo)/(hi-lo))*(H-mt-mb); };
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'" role="img" aria-label="Portfelli ja S&P 500 tänane muutus protsentides">';
+  niceTicks(lo,hi,3).forEach(function(v){ var y=Y(v);
+    svg+='<line x1="0" x2="'+W+'" y1="'+y+'" y2="'+y+'" stroke="'+(v===0?'var(--muted)':'var(--line-soft)')+'"'+(v===0?' stroke-opacity=".55"':'')+'/>'+
+         '<text x="0" y="'+(y-4)+'" fill="var(--muted)" font-size="11.5">'+(v===0?'0':sign(v)+nf1.format(Math.abs(v))+'%')+'</text>'; });
+  [9,12,15,18,21].forEach(function(hh){ var x=X(hh*60); if(x<24||x>W-16) return; svg+='<text x="'+x+'" y="'+(H-5)+'" fill="var(--muted)" font-size="11.5" text-anchor="middle">'+hh+'.00</text>'; });
+  var usx=X(990); if(usx>0&&usx<W) svg+='<line x1="'+usx+'" x2="'+usx+'" y1="'+mt+'" y2="'+(H-mb)+'" stroke="var(--line)" stroke-dasharray="2 4"/><text x="'+(usx+5)+'" y="'+(mt+9)+'" fill="var(--muted)" font-size="11">USA avaneb</text>';
+  ser.slice().reverse().forEach(function(s){ var pts=P.filter(function(q){ return q[s.k]!==null; });
+    svg+='<path d="'+pts.map(function(q,i){ return (i?'L':'M')+X(q.m).toFixed(1)+' '+Y(q[s.k]).toFixed(1); }).join('')+'" fill="none" stroke="'+s.c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    var L=pts[pts.length-1]; if(L) svg+='<circle cx="'+X(L.m)+'" cy="'+Y(L[s.k])+'" r="4" fill="'+s.c+'" stroke="var(--bg)" stroke-width="2"/>'; });
+  svg+='<g id="dcross" style="display:none"><line id="dcl" y1="'+mt+'" y2="'+(H-mb)+'" stroke="var(--muted)" stroke-dasharray="3 3"/></g></svg><div class="tip" id="dtip"></div>';
+  box.innerHTML=svg;
+  var Lp=P[P.length-1];
+  lg.innerHTML=ser.map(function(s){ var v=null; for(var i=P.length-1;i>=0&&v===null;i--) v=P[i][s.k];
+    return '<span><i style="background:'+s.c+'"></i>'+esc(s.n)+'<b class="'+cls(v)+'">'+pct(v/100)+'</b></span>'; }).join('')+'<span>Tänane muutus kellaaja järgi</span>';
+  var tip=$('dtip'), cross=$('dcross'), kell=function(m){ return ('0'+Math.floor(m/60)).slice(-2)+'.'+('0'+(m%60)).slice(-2); };
+  function move(ev){ var r=box.getBoundingClientRect(), x=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left, best=0, bd=1e9;
+    P.forEach(function(q,i){ var dd=Math.abs(X(q.m)-x); if(dd<bd){bd=dd;best=i;} });
+    var q=P[best], px=X(q.m); cross.style.display=''; $('dcl').setAttribute('x1',px); $('dcl').setAttribute('x2',px);
+    tip.innerHTML='<strong>kell '+kell(q.m)+'</strong>'+ser.map(function(s){ return '<div><span>'+esc(s.n)+'</span><b class="'+cls(q[s.k])+'">'+(q[s.k]===null?'–':pct(q[s.k]/100))+'</b></div>'; }).join('');
+    tip.style.display='block'; var tw=tip.offsetWidth; tip.style.left=Math.max(0,Math.min(W-tw,px<W/2?px+12:px-tw-12))+'px'; }
+  function leave(){ cross.style.display='none'; tip.style.display='none'; }
+  box.onmousemove=move; box.onmouseleave=leave; box.ontouchstart=move; box.ontouchmove=move; box.ontouchend=leave;
+}
+
+// ---------- vaated ----------
+function notes(d){
+  var h='';
+  if(S.demo) h+='<div class="note">Need on näidisandmed. Päris andmete nägemiseks kleebi oma Apps Scripti /exec link vahekaardile Seaded.</div>';
+  if(S.vana) h+='<div class="note">Värskeid andmeid ei saanud laadida. Näitan viimati laetud seisu (hinnad '+esc(d.uuendatud||'teadmata ajast')+').</div>';
+  if(d.hinnata.length) h+='<div class="note">Hind puudub: '+esc(d.hinnata.join(', '))+'. Need positsioonid ei ole kogusummas sees. Kontrolli tickerit lehel Hinnad.</div>';
+  else if(d.vanu.length) h+='<div class="note">Viimane hinnapäring ei õnnestunud: '+esc(d.vanu.join(', '))+'. Näitan eelmist teadaolevat hinda.</div>';
+  return h;
+}
+// Kokkupandav jaotis. Suletuna jääb pealkiri ja lühike kokkuvõte; olek jääb selles seadmes meelde.
+function fold(id, title, right, body, summary, esimene){
+  var kinni=!!S.kinni[id];
+  return '<section class="'+(esimene?'':'sec ')+'fold'+(kinni?' kinni':'')+'"><div class="sec-h"><h2><button type="button" class="fold-b" data-fold="'+id+'" aria-expanded="'+(!kinni)+'">'+
+         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'+title+'</button></h2>'+
+         (kinni?(summary?'<p class="fold-s">'+summary+'</p>':''):(right||''))+'</div>'+(kinni?'':body)+'</section>';
+}
+function cmpHtml(d){
+  var c=d.kokku, vd=(d.paev||d.vordlus||[]).filter(function(x){ return has(x.tanaPr); });
+  if(!vd.length||!has(c.tanaPr)) return '';
+  var seis=turuSeis(), lahti=function(t){ return onFutuur(t)?seis.fut:seis.us; }, pea=null;
+  vd.forEach(function(x){ if(!onFutuur(x.t)&&lahti(x.t)) pea=x; });             // USA börs avatud: võrdlus indeksi endaga
+  if(!pea) vd.forEach(function(x){ if(!pea&&onFutuur(x.t)&&lahti(x.t)) pea=x; }); // muidu sama indeksi futuur
+  if(!pea) pea=vd[0];
+  var read=[{n:'Portfell',v:c.tanaPr,c:'var(--gold)',tag:''}].concat(vd.map(function(x){ return {n:x.kuva,v:x.tanaPr,c:'var(--blue)',tag:lahti(x.t)?'avatud':'suletud'}; }));
+  var max=Math.max.apply(null,read.map(function(r){ return Math.abs(r.v); }).concat([0.005]));
+  var vahe=(c.tanaPr-pea.tanaPr)*100;
+  var lyhi='<b class="'+cls(vahe)+'">'+nf2.format(Math.abs(vahe))+' pp '+(vahe>=0?'ees':'taga')+'</b>';
+  return fold('paev','Täna võrreldes turuga','','<div class="cmp">'+read.map(function(r){
+      var w=Math.abs(r.v)/max*50;
+      return '<div>'+esc(r.n)+(r.tag?'<small>'+r.tag+'</small>':'')+'</div><div class="bar2"><i style="background:'+r.c+';'+(r.v>=0?'left:50%':'right:50%')+';width:'+w.toFixed(1)+'%"></i></div><div class="v '+cls(r.v)+'">'+pct(r.v)+'</div>';
+    }).join('')+'</div><div class="legend" id="dayLg" style="margin-top:18px"></div><div id="day"></div><p class="cmp-note">Portfell on '+(lahti(pea.t)?'täna':'võrreldes viimase börsipäevaga')+' võrdlusest '+esc(pea.kuva)+' <b class="'+cls(vahe)+'">'+nf2.format(Math.abs(vahe))+' protsendipunkti '+(vahe>=0?'ees':'taga')+'</b>.</p>',esc(pea.kuva)+' suhtes '+lyhi);
+}
+function viewPortfell(d){
+  var c=d.kokku, h='', vd=d.vordlus||[];
+  h+=fold('seis','Portfelli väärtus','',
+     '<div class="hero"><div class="hero-top"><div class="total">'+nf0.format(Math.round(c.vaartus))+'<small>€</small></div>'+
+     '<div class="today '+cls(c.tana)+'"><b>'+eurS(c.tana)+'</b><span>'+pct(c.tanaPr)+' täna</span></div></div>'+
+     '<div class="chart-ctl">'+segHtml('segMode',[['v','Väärtus'],['h','Tootlus']],S.mode)+segHtml('segRange',[['all','Kõik'],['ytd','Sel aastal'],['30','30 päeva']],S.range)+'</div>'+
+     (vd.length>1?'<div style="margin:0 0 8px">'+segHtml('segBm',vd.map(function(x,i){ return [String(i),'vs '+esc(x.kuva)]; }),String(S.bm))+'</div>':'')+
+     '<div class="legend" id="legend"></div><div id="chart"></div><div id="tblwrap"></div></div>',
+     '<b class="gold">'+eur(c.vaartus)+'</b> <span class="'+cls(c.tana)+'">'+eurS(c.tana)+' ('+pct(c.tanaPr)+')</span>', true);
+
+  h+=fold('naitajad','Kasum ja raha','','<dl class="stats">'+
+     '<div><dt>Kasum kokku</dt><dd class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'<small>'+pct(c.kasumPr)+' sissemakstust</small></dd></div>'+
+     '<div><dt>Sel aastal</dt><dd class="'+cls(c.aastaPr)+'">'+pct(c.aastaPr)+'<small>'+eurS(c.aastaEur)+'</small></dd></div>'+
+     '<div><dt>Sisse makstud</dt><dd>'+eur(c.netoSisse)+'<small>'+(c.algus?'tootlus '+pct(c.algusestPr)+' alates '+c.algus.slice(0,4)+' lõpust':'')+'</small></dd></div>'+
+     '<div class="clicky" data-cash="1" title="Paranda raha jääki"><dt>Vaba raha</dt><dd>'+eur(c.raha)+'<small>'+(c.vaartus>0?nf1.format(c.raha/c.vaartus*100)+'% portfellist':'')+'</small></dd></div></dl>'+
+     '<div class="split"><span>Realiseerimata<b class="'+cls(c.realiseerimata)+'">'+eurS(c.realiseerimata)+'</b></span><span>Realiseeritud<b class="'+cls(c.realiseeritud)+'">'+eurS(c.realiseeritud)+'</b></span><span>Dividendid<b>'+eur(c.dividendid)+'</b></span></div>',
+     'kasum <b class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'</b>, sel aastal <b class="'+cls(c.aastaPr)+'">'+pct(c.aastaPr)+'</b>');
+
+  h+=cmpHtml(d);
+
+  h+=fold('kaart','Positsioonide kaart',segHtml('segHeat',[['tana','Täna'],['nadal','Nädal'],['aasta','Aasta']],S.heat),'<div id="heat"></div><div class="scale" id="scale"></div>','');
+
+  h+=fold('pos','Positsioonid','<p>'+d.pos.length+' väärtpaberit, vajuta reale lisainfo jaoks</p>','<table id="ptable"></table>',d.pos.length+' väärtpaberit');
+
+  if(d.turg.length) h+=fold('turg','Turg','','<div class="strip"'+(d.turg.length<=3?' style="grid-template-columns:repeat('+d.turg.length+',minmax(0,1fr))"':'')+'>'+d.turg.map(function(m){
+      return '<div><span>'+esc(m.kuva)+'</span><b>'+nf0.format(Math.round(m.hind))+'</b><small class="'+cls(m.tanaPr)+'">'+pct(m.tanaPr)+' täna</small>'+
+             (has(m.tipust)?'<small><br>'+(m.tipust>-0.0005?'aasta tipus':pct(m.tipust)+' aasta tipust')+'</small>':'')+'</div>'; }).join('')+'</div>',d.turg.slice(0,2).map(function(m){ return esc(m.kuva)+' <b class="'+cls(m.tanaPr)+'">'+pct(m.tanaPr)+'</b>'; }).join(', '));
+
+  if(d.jalgin.length) h+=fold('jalgin','Jälgin','<p>Lisa ticker lehe Hinnad veergu A</p>','<table><thead><tr><th>Nimi</th><th>Täna</th><th>Nädal</th><th>'+new Date().getFullYear()+'</th></tr></thead><tbody>'+
+      d.jalgin.map(function(m){ return '<tr><td class="nm"><b>'+esc(m.kuva)+'</b><small>'+price(m.hind)+' '+esc(m.val)+'</small></td><td class="'+cls(m.tanaPr)+'">'+pct(m.tanaPr)+'</td><td class="'+cls(m.nadalPr)+'">'+pct(m.nadalPr)+'</td><td class="'+cls(m.aastaPr)+'">'+pct(m.aastaPr)+'</td></tr>'; }).join('')+'</tbody></table>',d.jalgin.length+' tickerit');
+
+  h+=fold('tehingud','Viimased tehingud','',(d.tehingud.length?'<ul class="tx">'+d.tehingud.map(function(t){
+      var kaup=t.tyyp==='Ost'||t.tyyp==='Müük', sisse=t.tyyp==='Müük'||t.tyyp==='Sissemakse'||t.tyyp==='Dividend'||(t.tyyp==='Korrektsioon'&&t.summa>=0);
+      return '<li><time>'+(t.d?kp(t.d,true):'')+'</time><div><b style="font-weight:500">'+esc(t.tyyp)+(t.kuva?' '+esc(t.kuva):'')+'</b>'+(kaup?'<small>'+qty(t.kogus)+' tk, hind '+price(t.hind)+' '+esc(t.val)+'</small>':'')+(t.markus?'<small>'+esc(t.markus)+'</small>':'')+'</div><div class="'+(sisse?'up':'')+'">'+(sisse?'+':'−')+eur2(Math.abs(t.summa))+'</div></li>'; }).join('')+'</ul>'
+      :'<p class="empty" style="text-align:left;padding:6px 0">Tehinguid veel pole. Esimese lisamiseks vajuta üleval „Lisa tehing“.</p>'),d.tehingud.length?d.tehingud.length+' viimast':'');
+  return h;
+}
+
+/** Aastate tabel: iga aasta viimane ajaloopunkt. */
+function aastad(d){
+  var by={}, order=[];
+  (d.ajalugu||[]).forEach(function(p){ var y=p.d.slice(0,4); if(!by[y]) order.push(y); by[y]=p; });
+  var out=[], prev=null, viim=order[order.length-1];
+  order.forEach(function(y){
+    var p=by[y], r={y:y,v:p.v,s:p.s,kasumKokku:p.v-p.s};
+    if(prev){
+      r.sisse=p.s-prev.s; r.kasum=(p.v-p.s)-(prev.v-prev.s); r.pr=p.h/prev.h-1;
+      var kuud=12; if(y===viim){ var a=ms(p.d), j=Date.UTC(+y,0,1); kuud=Math.max(0.5,(a-j)/864e5/30.44); }
+      r.kuus=r.kasum/kuud;
+      r.b=(d.vordlus||[]).map(function(x,i){ return p.b&&prev.b&&has(p.b[i])&&has(prev.b[i])?p.b[i]/prev.b[i]-1:null; });
+    } else { r.sisse=p.s; r.kasum=p.v-p.s; r.pr=null; r.kuus=null; r.b=[]; r.esimene=true; }
+    out.push(r); prev=p;
+  });
+  return out;
+}
+// ---------- vara jaotus (sõõrik) ----------
+var VARA_VARV=['#bb8820','#3987e5','#d95926','#199e70','#9085e9','#d55181'], VARA_MUU='#7b8794';
+function varaOsad(d){
+  var osad=[{n:'Portfell',v:d.kokku.vaartus,pf:true}].concat(d.varad.filter(function(x){ return x.v>0; }).map(function(x){ return {n:x.vara,v:x.v,x:x}; }));
+  osad=osad.filter(function(o){ return o.v>0; });
+  if(osad.length>6){ var muu=osad.slice(5).reduce(function(a,o){ return a+o.v; },0); osad=osad.slice(0,5).concat([{n:'Muu',v:muu,muu:true}]); }
+  osad.forEach(function(o,i){ o.c=o.muu?VARA_MUU:VARA_VARV[i]; });
+  return osad;
+}
+function sooerik(osad, kokku){
+  var R=80, r=50, cx=90, cy=90, a0=-Math.PI/2, svg='<svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Vara jaotus">';
+  if(osad.length===1){ svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+osad[0].c+'" stroke-width="'+(R-r)+'"/>'; }
+  else osad.forEach(function(o){
+    var a1=a0+o.v/kokku*2*Math.PI, suur=(a1-a0)>Math.PI?1:0, p=function(rad,a){ return (cx+rad*Math.cos(a)).toFixed(2)+' '+(cy+rad*Math.sin(a)).toFixed(2); };
+    svg+='<path d="M'+p(R,a0)+'A'+R+' '+R+' 0 '+suur+' 1 '+p(R,a1)+'L'+p(r,a1)+'A'+r+' '+r+' 0 '+suur+' 0 '+p(r,a0)+'Z" fill="'+o.c+'" stroke="var(--bg)" stroke-width="2"><title>'+esc(o.n)+': '+eur(o.v)+' ('+nf1.format(o.v/kokku*100)+'%)</title></path>';
+    a0=a1; });
+  return svg+'<text x="90" y="86" text-anchor="middle" fill="var(--muted)" font-size="11.5">Kõik kokku</text><text x="90" y="106" text-anchor="middle" fill="var(--text)" font-size="17" font-weight="600">'+eur(kokku)+'</text></svg>';
+}
+function viewYlevaade(d){
+  var c=d.kokku, h='', A=aastad(d), vd=d.vordlus||[], a0=d.ajalugu[0], aL=d.ajalugu[d.ajalugu.length-1];
+  var osad=varaOsad(d), kokku=osad.reduce(function(a,o){ return a+o.v; },0), pin=store('pf_pin');
+  var read=osad.map(function(o){
+    var lahti=!o.pf&&!o.muu&&S.varaAva===o.n;
+    var x=o.x||{}, kog=x.kogus>0;
+    var lisa=o.pf?'<em class="'+cls(c.kasum)+'">kasum '+eurS(c.kasum)+'</em>'
+            :kog?'<em>'+qty(x.kogus)+' untsi, <span class="'+cls(x.kasum)+'">kasum '+eurS(x.kasum)+' ('+pct(x.kasumPr)+')</span></em>':'';
+    return '<li class="'+(o.pf||o.muu?'':'clicky')+'"'+(o.pf||o.muu?'':' data-vara-ava="'+esc(o.n)+'" tabindex="0"')+'><i style="background:'+o.c+'"></i><span>'+esc(o.n)+lisa+'</span><b>'+eur(o.v)+'</b><small>'+nf1.format(o.v/kokku*100)+'%</small></li>'+
+      (lahti?'<li class="edit">'+(kog
+          ?'<label>Kogus, untsi<input inputmode="decimal" id="veKogus" value="'+String(x.kogus).replace('.',',')+'"></label><label>Ostuhind, € untsi kohta<input inputmode="decimal" id="veOst" value="'+String(x.ost).replace('.',',')+'"></label>'+
+           '<p class="cmp-note" style="flex-basis:100%;margin:0">Turuhind praegu '+eur(x.hind)+' untsi kohta'+(has(x.tanaPr)?' ('+pct(x.tanaPr)+' täna)':'')+', soetusmaksumus '+eur(x.soetus)+'.</p>'
+          :'<label>Väärtus, €<input inputmode="decimal" id="veVal" value="'+String(o.v).replace('.',',')+'"></label>')+
+        (pin?'':'<input id="vePin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off">')+
+        '<button type="button" class="btn primary" data-vara-salvesta="'+esc(o.n)+'">Salvesta</button><button type="button" class="btn danger" data-vara-kustuta="'+esc(o.n)+'">Kustuta</button></li>':'');
+  }).join('');
+  var nullid=d.varad.filter(function(x){ return !(x.v>0); });
+  h+=fold('vara','Kogu vara','',
+     (kokku>0?'<div class="vara">'+sooerik(osad,kokku)+'<ul class="varalist">'+read+'</ul></div>':'<p class="empty">Vara pole veel sisestatud.</p>')+
+     (nullid.length?'<p class="cmp-note">Väärtuseta: '+nullid.map(function(x){ return '<button type="button" class="link" data-vara-tais="'+esc(x.vara)+'">'+esc(x.vara)+'</button>'; }).join(', ')+'</p>':'')+
+     '<div class="varauus"><div style="flex-basis:100%">'+segHtml('segVara',[['summa','Summa eurodes'],['kuld','Kuld untsides']],S.varaTyyp)+'</div>'+
+       '<input id="nvName" placeholder="'+(S.varaTyyp==='kuld'?'Nimi':'Uus vara, nt Pension')+'" maxlength="30" aria-label="Vara nimi"'+(S.varaTyyp==='kuld'?' value="Kuld"':'')+'>'+
+       (S.varaTyyp==='kuld'
+         ?'<input inputmode="decimal" id="nvKogus" placeholder="Kogus, untsi" aria-label="Kogus untsides"><input inputmode="decimal" id="nvOst" placeholder="Ostuhind, €/unts" aria-label="Ostuhind eurodes untsi kohta">'
+         :'<input inputmode="decimal" id="nvVal" placeholder="Väärtus, €" aria-label="Väärtus eurodes">')+
+       (pin?'':'<input id="nvPin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off">')+'<button type="button" class="btn" id="nvAdd">Lisa vara</button></div>'+
+     '<p class="cmp-note">Vajuta varale, et seda muuta või kustutada. Kulla väärtus arvutatakse untsi turuhinnast (kullafutuur, eurodesse ümber arvestatud); füüsilise kulla müügihind võib sellest veidi erineda. Mitme ostu korral pane koguseks summa ja ostuhinnaks keskmine.</p>',
+     '<b class="gold">'+eur(kokku)+'</b>'+(osad.length>1?' '+osad.length+' osas':''), true);
+
+  var aastaid=a0&&aL?(ms(aL.d)-ms(a0.d))/864e5/365.25:0, cagr=aastaid>0.5&&a0.h>0?Math.pow(aL.h/a0.h,1/aastaid)-1:null;
+  h+=fold('ytootlus','Tootlus','','<dl class="stats">'+
+     '<div><dt>Kasum kokku</dt><dd class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'<small>'+pct(c.kasumPr)+' sissemakstust</small></dd></div>'+
+     '<div><dt>Tootlus algusest</dt><dd class="'+cls(c.algusestPr)+'">'+pct(c.algusestPr)+'<small>'+(c.algus?'alates '+kp(c.algus):'')+'</small></dd></div>'+
+     '<div><dt>Keskmiselt aastas</dt><dd class="'+cls(cagr)+'">'+pct(cagr)+'<small>liitintressina</small></dd></div>'+
+     '<div><dt>Sel aastal</dt><dd class="'+cls(c.aastaPr)+'">'+pct(c.aastaPr)+'<small>'+eurS(c.aastaEur)+'</small></dd></div></dl>'+
+     '<div class="split"><span>Sisse makstud<b>'+eur(c.netoSisse)+'</b></span><span>Realiseerimata<b class="'+cls(c.realiseerimata)+'">'+eurS(c.realiseerimata)+'</b></span><span>Realiseeritud<b class="'+cls(c.realiseeritud)+'">'+eurS(c.realiseeritud)+'</b></span><span>Dividendid<b>'+eur(c.dividendid)+'</b></span></div>',
+     'kasum <b class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'</b>, algusest <b class="'+cls(c.algusestPr)+'">'+pct(c.algusestPr)+'</b>');
+
+  h+=fold('aastad','Tootlus aastate kaupa','','<table><thead><tr><th>Aasta</th><th class="yr-s">Sisse makstud</th><th>Väärtus lõpus</th><th>Kasum</th><th>Tootlus</th>'+
+     vd.map(function(x){ return '<th>'+esc(x.kuva)+'</th>'; }).join('')+'<th class="yr-s">Kuus</th></tr></thead><tbody>'+
+     A.slice().reverse().map(function(r){
+       return '<tr><td><b style="font-weight:600">'+r.y+'</b>'+(r.esimene&&A.length>1?'<small>algseis</small>':'')+'</td><td class="yr-s">'+eurS(r.sisse)+'</td><td class="val">'+eur(r.v)+'</td>'+
+              '<td class="'+cls(r.kasum)+'">'+eurS(r.kasum)+'</td><td class="'+cls(r.pr)+'">'+pct(r.pr)+'</td>'+
+              vd.map(function(x,i){ var b=r.b[i]; return '<td class="'+cls(b)+'">'+pct(b)+(has(b)&&has(r.pr)?'<small>'+((r.pr-b)>=0?'+':'−')+nf1.format(Math.abs(r.pr-b)*100)+' pp</small>':'')+'</td>'; }).join('')+
+              '<td class="yr-s '+cls(r.kuus)+'">'+eurS(r.kuus)+'</td></tr>'; }).join('')+
+     '<tr class="sum"><td>Kokku</td><td class="yr-s">'+eur(c.netoSisse)+'</td><td class="val">'+eur(c.vaartus)+'</td><td class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'</td><td class="'+cls(c.algusestPr)+'">'+pct(c.algusestPr)+'</td>'+
+     vd.map(function(x,i){ var b=a0&&aL&&a0.b&&aL.b&&has(a0.b[i])&&has(aL.b[i])?aL.b[i]/a0.b[i]-1:null; return '<td class="'+cls(b)+'">'+pct(b)+'</td>'; }).join('')+'<td class="yr-s"></td></tr></tbody></table>'+
+     '<p class="cmp-note">Tootlus on arvutatud osaku hinna järgi, nii et sissemaksed seda ei moonuta. Väike rida võrdluse all näitab, mitu protsendipunkti portfell ees või taga oli. S&P 500 on indeks dollarites ja ilma dividendideta, portfell on eurodes.</p>',
+     A.length+' aastat');
+  return h;
+}
+var JUHEND=[
+  ['Tee uus tühi Google Sheet','Ava <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a> ja pane failile nimi, näiteks „Portfell“.'],
+  ['Ava skriptiredaktor','Sheetis menüüst Extensions → Apps Script. Kustuta seal olev näidiskood (<code>function myFunction…</code>).'],
+  ['Kleebi skript','<button type="button" class="btn" id="kopeeri">Kopeeri skript</button> <span id="kopeeriInfo"></span><br>Kleebi see tühja redaktorisse.'],
+  ['Pane PIN','Faili alguses on rida <code>var PF_PIN = \'\';</code>. Kirjuta jutumärkide vahele oma PIN (vähemalt 4 märki) ja salvesta (Ctrl+S).'],
+  ['Käivita seadistus','Vali ülevalt rippmenüüst <code>PF_seadista</code> ja vajuta Run. Google küsib esimesel korral luba: Review permissions → vali oma konto → Advanced → Go to … (unsafe) → Allow. Hoiatus tuleb sellest, et skript on sinu enda tehtud ja Google pole seda üle vaadanud. Sheeti tekivad lehed Tehingud, Hinnad, Positsioonid, Ajalugu ja Seaded.'],
+  ['Tee andmelink','Deploy → New deployment → hammasratas → Web app. „Execute as: Me“, „Who has access: Anyone“ → Deploy. Kopeeri „Web app URL“ (lõpeb <code>/exec</code>).'],
+  ['Kleebi link siia','Selle lehe algusesse jaotisse „Ühendus“ ja vajuta „Salvesta link“. Sisesta jaotises „PIN“ sama PIN ja jäta meelde.'],
+  ['Sisesta oma seis','„Lisa tehing“ → Sissemakse: kogu summa, mille oled kontole pannud. Siis iga väärtpaber Ostuna (kogus ja keskmine ostuhind). Lõpuks vajuta „Vaba raha“ peale ja pane tegelik raha jääk.']
+];
+function viewSeaded(d){
+  var h='', url=apiUrl();
+  h+='<div class="set"><h3>Ühendus</h3>'+(INSIDE
+      ? '<p>Leht on avatud otse Apps Scriptist, linki pole vaja.</p>'
+      : '<p>Kleebi siia oma Apps Scripti web-appi /exec link. See jääb meelde ainult selles seadmes.</p>'+
+        '<div class="line"><input id="sUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" value="'+esc(url)+'"></div>'+
+        '<div class="line"><button type="button" class="btn primary" id="sUrlSave">Salvesta link</button>'+(url?'<button type="button" class="btn" id="sUrlClear">Eemalda</button>':'')+'</div>')+'</div>';
+  h+='<div class="set"><h3>PIN</h3><p>PIN-i küsitakse tehingu ja vara väärtuse salvestamisel. Soovi korral jäta see selles seadmes meelde.</p>'+
+     '<div class="line"><input id="sPin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" value="'+esc(store('pf_pin'))+'"></div>'+
+     '<div class="line"><button type="button" class="btn" id="sPinSave">Jäta meelde</button><button type="button" class="btn" id="sPinClear">Unusta</button></div></div>';
+  if(d.pos) h+='<div class="set"><h3>Vaba raha</h3><p>Raha jääk arvutatakse tehingutest: sissemaksed, ostud, müügid, dividendid ja tasud. Praegu on arvestuses <b style="color:var(--text)">'+eur2(d.kokku.raha)+'</b>. Kui see ei klapi pangaga, sisesta tegelik jääk ja vahe läheb kirja parandusena.</p>'+
+     '<div class="line"><button type="button" class="btn" data-act="Jääk">Paranda raha jääki</button><button type="button" class="btn" data-act="Sissemakse">Lisa sissemakse</button></div></div>';
+  h+='<div class="set"><h3>Mida muudetakse Google Sheetsis</h3><p style="margin:0">Kuvanimed ja jälgimisnimekiri on lehel Hinnad (veerud Kuvanimi ja Ticker). Vale tehingu parandamiseks muuda või kustuta rida lehel Tehingud; positsioonid arvutatakse järgmisel värskendusel uuesti. Kulda, pensioni ja muud vara saab lisada vahekaardil „Tootlus ja vara“.</p></div>';
+  h+='<details class="set juhend"'+(url||INSIDE?'':' open')+'><summary><h3>Esmane seadistamine: oma Google Sheet</h3></summary>'+
+     '<p>Iga kasutaja andmed on tema enda Google Sheetis. Seadistus võtab umbes kümme minutit ja seda on mugavam teha arvutis.</p><ol>'+
+     JUHEND.map(function(s){ return '<li><b>'+s[0]+'</b><span>'+s[1]+'</span></li>'; }).join('')+'</ol>'+
+     '<p style="margin:0">Hiljem skripti uuendades: Deploy → Manage deployments → pliiats → Version: New version. Nii jääb link samaks.</p></details>';
+  return h;
+}
+function render(d){
+  if(d) { S.data=d; S.p=d.portfell; } else d=S.data;
+  [].forEach.call($('nav').children,function(b){ b.setAttribute('aria-pressed',b.dataset.view===S.view); });
+  var h=notes(d);
+  if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
+  $('app').innerHTML=h;
+  var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.';
+  if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); }
+}
+function fail(e){
+  if(S.data){ toast(e.message||String(e)); return; }
+  $('foot').hidden=true;
+  [].forEach.call($('nav').children,function(b){ b.setAttribute('aria-pressed',b.dataset.view===S.view); });
+  if(e&&e.yhendus&&S.view!=='seaded'){
+    var u=apiUrl();
+    $('app').innerHTML='<div class="set" style="margin-top:8px"><h3>Andmeid ei saanud laadida</h3>'+
+      '<p>Link vastas, aga mitte andmetega. Tavaliselt on põhjus üks neist:</p>'+
+      '<p>1. Web-app ei ole avatud kõigile. Apps Scriptis: Deploy → Manage deployments → pliiats → „Who has access: Anyone“.<br>'+
+      '2. Pärast koodi muutmist jäi tegemata uus versioon (samas aknas „Version: New version“ → Deploy).<br>'+
+      '3. Koodis on viga, näiteks PIN-i real puudub jutumärk.</p>'+
+      (e.detail?'<p>Tehniline põhjus: '+esc(e.detail)+'</p>':'')+
+      '<p>Ava link otse: kui näed seal portfelli, on link õige; kui Google küsib sisselogimist või näitab veateadet, on põhjus seal kirjas.</p>'+
+      '<div class="line"><a class="btn" href="'+esc(u)+'" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">Ava link brauseris</a>'+
+      '<button class="btn" onclick="load()">Proovi uuesti</button><button class="btn" onclick="S.view=\'seaded\';fail(new Error(\'\'))">Muuda linki</button></div></div>';
+    return;
+  }
+  if(S.view==='seaded'){ $('app').innerHTML=viewSeaded({})+(e&&e.message?'<div class="note">'+esc(e.message)+'</div>':''); return; }
+  $('app').innerHTML='<div class="state"><b>Andmeid ei saanud laadida</b>'+esc(e&&e.message?e.message:e)+'<br><br><button class="btn" onclick="load()">Proovi uuesti</button> <button class="btn" onclick="S.view=\'seaded\';fail(new Error(\'Kontrolli linki ja proovi uuesti.\'))">Ava seaded</button></div>';
+}
+function setBusy(b){ S.busy=b; $('btnRefresh').classList.toggle('busy',b); }
+function load(p, tegevus){
+  if(S.busy) return; setBusy(true);
+  if(!S.data) $('app').innerHTML='<div class="state">Laen andmeid…</div>';
+  var soov=p||S.p||store('pf_p')||'';
+  api(tegevus||'andmed',{p:soov},function(d){ setBusy(false); S.vana=''; if(!S.demo){ store('pf_p',d.portfell); store('pf_last_'+d.portfell,JSON.stringify(d)); } render(d); },
+    function(e){ setBusy(false);
+      // Võrguta või serveri vea korral näita viimati laetud andmeid, kui need on selles seadmes olemas.
+      var c=null; if(apiUrl()&&(!S.data||(soov&&S.data.portfell!==soov))){ try{ c=JSON.parse(store('pf_last_'+soov)||store('pf_last_'+(store('pf_p')||''))||'null'); }catch(x){} }
+      if(c&&c.pos){ S.vana=e.message||String(e); render(c); return; }
+      fail(e); });
+}
+function toast(t){ var el=$('toast'); el.textContent=t; el.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(function(){ el.classList.remove('on'); },3800); }
+function varaPin(pinEl){ var pin=(pinEl&&pinEl.value)||store('pf_pin'); if(pinEl&&pinEl.value) store('pf_pin',pinEl.value); return pin; }
+function salvestaVara(nimi, w, pinEl){
+  if(!String(nimi||'').trim()){ toast('Kirjuta vara nimi'); return; }
+  var q={p:S.p,vara:nimi};
+  if(w.kogus!==undefined){ q.kogus=num(w.kogus); q.ost=num(w.ost);
+    if(!(q.kogus>0)){ toast('Sisesta kogus untsides'); return; } if(!(q.ost>=0)){ toast('Sisesta ostuhind untsi kohta'); return; } }
+  else { q.v=num(w.v); if(!(q.v>=0)){ toast('Sisesta väärtus eurodes'); return; } }
+  if(S.demo){ toast('Need on näidisandmed – siin ei salvestata.'); return; }
+  q.pin=varaPin(pinEl); if(!q.pin){ toast('Sisesta PIN'); return; }
+  setBusy(true);
+  api('vara',q,function(d){ setBusy(false); S.varaAva=null; render(d); toast(nimi+' salvestatud'); },function(e){ setBusy(false); if(/PIN/.test(e.message||'')) store('pf_pin',null); toast(e.message||String(e)); });
+}
+function kustutaVara(nimi, nupp, pinEl){
+  if(nupp.dataset.kindel!=='1'){ nupp.dataset.kindel='1'; nupp.textContent='Kustuta päriselt?'; setTimeout(function(){ if(nupp.isConnected){ nupp.dataset.kindel=''; nupp.textContent='Kustuta'; } },4000); return; }
+  if(S.demo){ toast('Need on näidisandmed – siin ei kustutata.'); return; }
+  var pin=varaPin(pinEl); if(!pin){ toast('Sisesta PIN'); return; }
+  setBusy(true);
+  api('varaKustuta',{pin:pin,p:S.p,vara:nimi},function(d){ setBusy(false); S.varaAva=null; render(d); toast(nimi+' kustutatud'); },function(e){ setBusy(false); if(/PIN/.test(e.message||'')) store('pf_pin',null); toast(e.message||String(e)); });
+}
+function kopeeriSkript(){
+  var info=$('kopeeriInfo'), viga=function(){ info.innerHTML='Kopeerimine ei õnnestunud. <a href="portfell-server.gs" target="_blank" rel="noopener">Ava skript</a> ja kopeeri käsitsi (Ctrl+A, Ctrl+C).'; };
+  if(INSIDE||location.protocol==='file:'||location.protocol==='content:'){ info.textContent='Skript on äpi veebilehe kaustas failina portfell-server.gs.'; return; }
+  info.textContent='Laen…';
+  fetch('portfell-server.gs',{cache:'no-store'}).then(function(r){ if(!r.ok) throw 0; return r.text(); })
+    .then(function(t){ return navigator.clipboard.writeText(t).then(function(){ info.textContent='Kopeeritud. Kleebi Apps Scripti redaktorisse.'; }); }).catch(viga);
+}
+
+// ---------- tehinguvorm ----------
+var TYYBID=['Ost','Müük','Dividend','Sissemakse','Väljamakse','Tasu','Jääk'];
+var TYYP_NIMI={'Jääk':'Raha jääk'};
+function findTicker(txt){
+  txt=String(txt||'').trim().toUpperCase(); if(!txt||!S.data) return null;
+  var L=S.data.tickerid, i;
+  for(i=0;i<L.length;i++) if(L[i].t.toUpperCase()===txt) return L[i];
+  for(i=0;i<L.length;i++) if(String(L[i].kuva).toUpperCase()===txt) return L[i];
+  return null;
+}
+function held(t){ var r=null; (S.data.pos||[]).forEach(function(p){ if(p.t===t) r=p; }); return r; }
+function openForm(tyyp, ticker){
+  if(!S.data||!S.data.pos) return;
+  S.tyyp=tyyp||'Ost';
+  $('frm').reset(); $('err').textContent='';
+  var t=new Date(); $('iKp').value=t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2); $('iKp').max=$('iKp').value;
+  $('dl').innerHTML=S.data.tickerid.map(function(x){ return '<option value="'+esc(x.t)+'">'+esc(x.kuva)+'</option>'; }).join('');
+  var pin=store('pf_pin'); if(pin){ $('iPin').value=pin; $('cPin').checked=true; }
+  if(ticker){ $('iTicker').value=ticker; }
+  syncForm(true);
+  $('dlg').showModal();
+  ($('iTicker').value||!(/Ost|Müük|Dividend/.test(S.tyyp)) ? (/Ost|Müük/.test(S.tyyp)?$('iKogus'):$('iSumma')) : $('iTicker')).focus();
+}
+function syncForm(prefill){
+  var kaup=S.tyyp==='Ost'||S.tyyp==='Müük', jaak=S.tyyp==='Jääk', d=S.data;
+  $('types').innerHTML=TYYBID.map(function(t){ return '<button type="button" data-t="'+t+'" aria-pressed="'+(t===S.tyyp)+'">'+(TYYP_NIMI[t]||t)+'</button>'; }).join('');
+  $('fTicker').hidden=!(kaup||S.tyyp==='Dividend'); $('fTrade').hidden=!kaup; $('fTasu').hidden=!kaup; $('fSumma').hidden=kaup;
+  $('lSumma').textContent=jaak?'Tegelik raha jääk, €':'Summa, €';
+  var k=findTicker($('iTicker').value), p=k?held(k.t):null, hint='';
+  if(!$('fTicker').hidden){
+    var raw=$('iTicker').value.trim();
+    if(k){ hint=esc(k.t)+', hind '+price(k.hind)+' '+esc(k.val)+(p?', sul on '+qty(p.kogus)+' tk':''); if(prefill&&kaup&&!$('iHind').value&&has(k.hind)) $('iHind').value=String(k.hind).replace('.',','); }
+    else if(raw) hint = S.tyyp==='Müük' ? 'Seda väärtpaberit portfellis pole' : 'Uus ticker. Kasuta Yahoo sümbolit (nt NKE, SAP.DE); kontrollin seda salvestamisel.';
+    if(S.tyyp==='Müük'&&k&&!p) hint='Seda väärtpaberit portfellis pole';
+  }
+  $('hTicker').innerHTML=hint;
+  $('lHind').textContent='Hind'+(k?', '+k.val:'');
+  $('bAll').hidden=!(S.tyyp==='Müük'&&p);
+  // kokkuvõte
+  var box=$('sumbox'), raha=d.kokku.raha, muutus=null, rida='';
+  if(jaak){
+    var siht=num($('iSumma').value);
+    box.innerHTML='<div><span>Praegu arvestuses</span><b>'+eur2(raha)+'</b></div>'+(isFinite(siht)?'<div><span>Parandus</span><b>'+(siht-raha>=0?'+':'−')+eur2(Math.abs(siht-raha))+'</b></div>':'')+
+      '<div style="margin-top:4px">Vahe läheb kirja parandusena ja loetakse kasumi hulka (nt arvestamata dividend või tasu). Kui tõid raha juurde või võtsid välja, kasuta sissemakset või väljamakset.</div>';
+    box.hidden=false;
+  } else {
+    if(kaup){
+      var kogus=num($('iKogus').value), hind=num($('iHind').value), tasu=num($('iTasu').value)||0, val=k?k.val:null, kurss=val==='EUR'?1:(val?d.kursid[val]:null);
+      if(kogus>0&&hind>=0&&kurss){ var s=kogus*hind*kurss; muutus=S.tyyp==='Ost'?-(s+tasu):(s-tasu);
+        rida='<div><span>'+(S.tyyp==='Ost'?'Maksad':'Saad')+(val!=='EUR'?' (kurss '+mkf(0,4).format(kurss)+')':'')+'</span><b>'+eur2(Math.abs(muutus))+'</b></div>'; }
+    } else { var sm=num($('iSumma').value); if(sm>0) muutus=(S.tyyp==='Sissemakse'||S.tyyp==='Dividend')?sm:-sm; }
+    if(muutus!==null){ var uus=raha+muutus;
+      box.innerHTML=rida+'<div><span>Vaba raha pärast</span><b class="'+(uus<0?'down':'')+'">'+eur2(uus)+'</b></div>'+(uus<-0.005?'<div style="color:var(--down);margin-top:4px">Raha jääks miinusesse. Lisa enne sissemakse, kui tõid raha juurde.</div>':'');
+      box.hidden=false; } else box.hidden=true;
+  }
+  $('bSave').textContent={Ost:'Salvesta ost','Müük':'Salvesta müük',Dividend:'Salvesta dividend',Sissemakse:'Salvesta sissemakse','Väljamakse':'Salvesta väljamakse',Tasu:'Salvesta tasu','Jääk':'Salvesta jääk'}[S.tyyp];
+  $('bSave').disabled=!d.pinOlemas&&!S.demo;
+  if(!d.pinOlemas&&!S.demo) $('err').textContent='Tehingute lisamiseks pane PIN faili liveapi.gs algusesse (PF_PIN) ja tee uus versioon.';
+}
+function submitForm(ev){
+  ev.preventDefault();
+  var kaup=S.tyyp==='Ost'||S.tyyp==='Müük', k=findTicker($('iTicker').value), err='';
+  var t={ portfell:S.p, tyyp:S.tyyp, ticker:k?k.t:$('iTicker').value.trim().toUpperCase(), kuupaev:$('iKp').value, markus:$('iMarkus').value.trim() };
+  if(kaup){ t.kogus=num($('iKogus').value); t.hind=num($('iHind').value); t.tasu=num($('iTasu').value)||0;
+    if(!t.ticker) err='Vali väärtpaber'; else if(!(t.kogus>0)) err='Sisesta kogus'; else if(!(t.hind>=0)) err='Sisesta hind';
+    else if(S.tyyp==='Müük'){ var p=k?held(k.t):null; if(!p) err='Seda väärtpaberit portfellis pole'; else if(t.kogus>p.kogus+1e-9) err='Sul on ainult '+qty(p.kogus)+' tk'; }
+  } else if(S.tyyp==='Jääk'){
+    var siht=num($('iSumma').value); t.tyyp='Korrektsioon'; t.ticker=''; t.summa=Math.round((siht-S.data.kokku.raha)*100)/100; if(!t.markus) t.markus='raha jäägi parandus';
+    if(!isFinite(siht)) err='Sisesta tegelik raha jääk'; else if(Math.abs(t.summa)<0.01) err='Jääk on juba '+eur2(siht);
+  } else { t.summa=num($('iSumma').value); if(!(t.summa>0)) err='Sisesta summa'; if(S.tyyp!=='Dividend') t.ticker=''; }
+  if(!err&&!$('iPin').value&&!S.demo) err='Sisesta PIN';
+  if(err){ $('err').textContent=err; return; }
+  $('err').textContent=''; var b=$('bSave'), old=b.textContent; b.disabled=true; b.textContent='Salvestan…';
+  store('pf_pin',$('cPin').checked?$('iPin').value:null);
+  api('tehing',{pin:$('iPin').value,t:t},function(d){ b.disabled=false; b.textContent=old; $('dlg').close(); render(d); toast((TYYP_NIMI[S.tyyp]||S.tyyp)+' salvestatud'); },
+    function(e){ b.disabled=false; b.textContent=old; $('err').textContent=e.message||String(e); if(/PIN/.test(e.message||'')) store('pf_pin',null); });
+}
+
+// ---------- sündmused ----------
+document.addEventListener('click',function(ev){
+  var b=ev.target.closest('button'), row;
+  if(b){
+    if(b.dataset.fold){ var fid=b.dataset.fold; if(S.kinni[fid]) delete S.kinni[fid]; else S.kinni[fid]=1; store('pf_kinni',JSON.stringify(S.kinni)); render(); return; }
+    var seg=b.parentNode.id;
+    if(seg==='nav'){ S.view=b.dataset.view; if(S.data) render(); else if(S.view==='seaded') fail(new Error('Andmeid pole veel laetud.')); else load(); window.scrollTo(0,0); return; }
+    if(seg==='segMode'){ S.mode=b.dataset.v; render(); return; }
+    if(seg==='segRange'){ S.range=b.dataset.v; render(); return; }
+    if(seg==='segBm'){ S.bm=+b.dataset.v; S.mode='h'; render(); return; }
+    if(seg==='segHeat'){ S.heat=b.dataset.v; [].forEach.call(b.parentNode.children,function(x){ x.setAttribute('aria-pressed',x===b); }); drawHeat(); return; }
+    if(seg==='types'){ S.tyyp=b.dataset.t; $('err').textContent=''; syncForm(true); return; }
+    if(b.dataset.sort){ var k=b.dataset.sort; S.sort=S.sort.k===k?{k:k,dir:-S.sort.dir}:{k:k,dir:k==='kuva'?1:-1}; drawTable(); return; }
+    if(b.dataset.act){ openForm(b.dataset.act,b.dataset.tk); return; }
+    if(b.dataset.varaSalvesta){ salvestaVara(b.dataset.varaSalvesta,$('veKogus')?{kogus:$('veKogus').value,ost:$('veOst').value}:{v:$('veVal').value},$('vePin')); return; }
+    if(b.dataset.varaKustuta){ kustutaVara(b.dataset.varaKustuta,b,$('vePin')); return; }
+    if(b.dataset.varaTais){ $('nvName').value=b.dataset.varaTais; ($('nvVal')||$('nvKogus')).focus(); return; }
+    if(b.id==='nvAdd'){ salvestaVara($('nvName').value.trim(),$('nvKogus')?{kogus:$('nvKogus').value,ost:$('nvOst').value}:{v:$('nvVal').value},$('nvPin')); return; }
+    if(b.parentNode.id==='segVara'){ S.varaTyyp=b.dataset.v; render(); return; }
+    if(b.id==='kopeeri'){ kopeeriSkript(); return; }
+    if(b.id==='sUrlSave'){ var u=$('sUrl').value.trim();
+      if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(u)){ toast('Link peab algama https://script.google.com/ ja lõppema /exec'); return; }
+      store('pf_api',u); S.data=null; S.view='portfell'; load(); toast('Link salvestatud'); return; }
+    if(b.id==='sUrlClear'){ store('pf_api',null); S.data=null; load(); toast('Link eemaldatud'); return; }
+    if(b.id==='sPinSave'){ store('pf_pin',$('sPin').value||null); toast($('sPin').value?'PIN jäeti meelde':'PIN on tühi'); return; }
+    if(b.id==='sPinClear'){ store('pf_pin',null); $('sPin').value=''; toast('PIN unustatud'); return; }
+    if(b.id==='btnAdd'){ openForm('Ost'); return; }
+    if(b.id==='btnRefresh'){ load(null,'varskenda'); return; }
+    if(b.id==='dlgX'){ $('dlg').close(); return; }
+    if(b.id==='bAll'){ var k2=findTicker($('iTicker').value), p=k2?held(k2.t):null; if(p){ $('iKogus').value=String(p.kogus).replace('.',','); syncForm(); } return; }
+    return;
+  }
+  if(ev.target.closest('[data-cash]')){ openForm('Jääk'); return; }
+  var va=ev.target.closest('[data-vara-ava]'); if(va){ S.varaAva=S.varaAva===va.dataset.varaAva?null:va.dataset.varaAva; render(); var vi=$('veVal')||$('veKogus'); if(vi) vi.focus(); return; }
+  row=ev.target.closest('tr.row');
+  if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
+});
+document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches&&ev.target.matches('tr.row,[data-vara-ava]')){ ev.preventDefault(); ev.target.click(); } });
+$('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.target.id!=='iMarkus') syncForm(ev.target.id==='iTicker'); });
+$('frm').addEventListener('submit',submitForm);
+$('dlg').addEventListener('click',function(ev){ if(ev.target===$('dlg')) $('dlg').close(); });
+var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(function(){ if(S.data&&S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); } },120); });
+setInterval(function(){ if(!document.hidden&&S.data&&!$('dlg').open&&S.view!=='seaded') load(); },5*60*1000);
+// Avakuvale paigaldatav rakendus: ainult siis, kui leht tuleb oma veebiaadressilt (nt GitHub Pages), mitte Apps Scriptist ega failist.
+if(!INSIDE && location.protocol==='https:' || location.hostname==='localhost'){
+  var ml=document.createElement('link'); ml.rel='manifest'; ml.href='manifest.webmanifest'; document.head.appendChild(ml);
+  var al=document.createElement('link'); al.rel='apple-touch-icon'; al.href='icon-192.png'; document.head.appendChild(al);
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+load();
+</script>
+</body>
+</html>
