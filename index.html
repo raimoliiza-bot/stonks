@@ -698,10 +698,10 @@ function viewYlevaade(d){
     var lisa=o.pf?'<em class="'+cls(c.kasum)+'">kasum '+eurS(c.kasum)+'</em>'
             :kog?'<em>'+qty(x.kogus)+' untsi, <span class="'+cls(x.kasum)+'">kasum '+eurS(x.kasum)+' ('+pct(x.kasumPr)+')</span></em>':'';
     return '<li class="'+(o.pf||o.muu?'':'clicky')+'"'+(o.pf||o.muu?'':' data-vara-ava="'+esc(o.n)+'" tabindex="0"')+'><i style="background:'+o.c+'"></i><span>'+esc(o.n)+lisa+'</span><b>'+eur(o.v)+'</b><small>'+nf1.format(o.v/kokku*100)+'%</small></li>'+
-      (lahti?'<li class="edit">'+(kog
-          ?'<label>Kogus, untsi<input inputmode="decimal" id="veKogus" value="'+String(x.kogus).replace('.',',')+'"></label><label>Ostuhind, € untsi kohta<input inputmode="decimal" id="veOst" value="'+String(x.ost).replace('.',',')+'"></label>'+
-           '<p class="cmp-note" style="flex-basis:100%;margin:0">Turuhind praegu '+eur(x.hind)+' untsi kohta'+(has(x.tanaPr)?' ('+pct(x.tanaPr)+' täna)':'')+', soetusmaksumus '+eur(x.soetus)+'.</p>'
-          :'<label>Väärtus, €<input inputmode="decimal" id="veVal" value="'+String(o.v).replace('.',',')+'"></label>')+
+      (lahti?'<li class="edit"><div style="flex-basis:100%">'+segHtml('segVaraE',[['summa','Summa eurodes'],['kuld','Kuld untsides']],S.varaAvaTyyp||(kog?'kuld':'summa'))+'</div>'+((S.varaAvaTyyp||(kog?'kuld':'summa'))==='kuld'
+          ?'<label>Kogus, untsi<input inputmode="decimal" id="veKogus" value="'+(kog?String(x.kogus).replace('.',','):'')+'"></label><label>Ostuhind, € untsi kohta<input inputmode="decimal" id="veOst" value="'+(kog?String(x.ost).replace('.',','):'')+'"></label>'+
+           '<p class="cmp-note" style="flex-basis:100%;margin:0">'+(kog?'Turuhind praegu '+eur(x.hind)+' untsi kohta'+(has(x.tanaPr)?' ('+pct(x.tanaPr)+' täna)':'')+', soetusmaksumus '+eur(x.soetus)+'.':'Väärtus hakkab tulema untsi turuhinnast. Praegune käsitsi pandud summa ('+eur(o.v)+') asendatakse.')+'</p>'
+          :'<label>Väärtus, €<input inputmode="decimal" id="veVal" value="'+(kog?'':String(o.v).replace('.',','))+'"></label>')+
         (pin?'':'<input id="vePin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off">')+
         '<button type="button" class="btn primary" data-vara-salvesta="'+esc(o.n)+'">Salvesta</button><button type="button" class="btn danger" data-vara-kustuta="'+esc(o.n)+'">Kustuta</button></li>':'');
   }).join('');
@@ -822,7 +822,8 @@ function salvestaVara(nimi, w, pinEl){
   if(S.demo){ toast('Need on näidisandmed – siin ei salvestata.'); return; }
   q.pin=varaPin(pinEl); if(!q.pin){ toast('Sisesta PIN'); return; }
   setBusy(true);
-  api('vara',q,function(d){ setBusy(false); S.varaAva=null; render(d); toast(nimi+' salvestatud'); },function(e){ setBusy(false); if(/PIN/.test(e.message||'')) store('pf_pin',null); toast(e.message||String(e)); });
+  api('vara',q,function(d){ setBusy(false); S.varaAva=null; S.varaAvaTyyp=null; var x=null; (d.varad||[]).forEach(function(v){ if(String(v.vara).toLowerCase()===String(nimi).toLowerCase()) x=v; }); render(d);
+    toast(q.kogus&&!(x&&x.kogus>0)?'Server ei tunne veel kulla untse. Uuenda Apps Scripti kood ja tee New version.':nimi+' salvestatud'); },function(e){ setBusy(false); if(/PIN/.test(e.message||'')) store('pf_pin',null); toast(e.message||String(e)); });
 }
 function kustutaVara(nimi, nupp, pinEl){
   if(nupp.dataset.kindel!=='1'){ nupp.dataset.kindel='1'; nupp.textContent='Kustuta päriselt?'; setTimeout(function(){ if(nupp.isConnected){ nupp.dataset.kindel=''; nupp.textContent='Kustuta'; } },4000); return; }
@@ -936,6 +937,7 @@ document.addEventListener('click',function(ev){
     if(b.dataset.varaTais){ $('nvName').value=b.dataset.varaTais; ($('nvVal')||$('nvKogus')).focus(); return; }
     if(b.id==='nvAdd'){ salvestaVara($('nvName').value.trim(),$('nvKogus')?{kogus:$('nvKogus').value,ost:$('nvOst').value}:{v:$('nvVal').value},$('nvPin')); return; }
     if(b.parentNode.id==='segVara'){ S.varaTyyp=b.dataset.v; render(); return; }
+    if(b.parentNode.id==='segVaraE'){ S.varaAvaTyyp=b.dataset.v; render(); var ve=$('veKogus')||$('veVal'); if(ve) ve.focus(); return; }
     if(b.id==='kopeeri'){ kopeeriSkript(); return; }
     if(b.id==='sUrlSave'){ var u=$('sUrl').value.trim();
       if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(u)){ toast('Link peab algama https://script.google.com/ ja lõppema /exec'); return; }
@@ -950,7 +952,7 @@ document.addEventListener('click',function(ev){
     return;
   }
   if(ev.target.closest('[data-cash]')){ openForm('Jääk'); return; }
-  var va=ev.target.closest('[data-vara-ava]'); if(va){ S.varaAva=S.varaAva===va.dataset.varaAva?null:va.dataset.varaAva; render(); var vi=$('veVal')||$('veKogus'); if(vi) vi.focus(); return; }
+  var va=ev.target.closest('[data-vara-ava]'); if(va){ S.varaAva=S.varaAva===va.dataset.varaAva?null:va.dataset.varaAva; S.varaAvaTyyp=null; render(); var vi=$('veVal')||$('veKogus'); if(vi) vi.focus(); return; }
   row=ev.target.closest('tr.row');
   if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
 });
