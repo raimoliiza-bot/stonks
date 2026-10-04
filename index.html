@@ -776,7 +776,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 5, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); }
 }
 function fail(e){
@@ -823,7 +823,9 @@ function salvestaVara(nimi, w, pinEl){
   q.pin=varaPin(pinEl); if(!q.pin){ toast('Sisesta PIN'); return; }
   setBusy(true);
   api('vara',q,function(d){ setBusy(false); S.varaAva=null; S.varaAvaTyyp=null; var x=null; (d.varad||[]).forEach(function(v){ if(String(v.vara).toLowerCase()===String(nimi).toLowerCase()) x=v; }); render(d);
-    toast(q.kogus&&!(x&&x.kogus>0)?'Server ei tunne veel kulla untse. Uuenda Apps Scripti kood ja tee New version.':nimi+' salvestatud'); },function(e){ setBusy(false); if(/PIN/.test(e.message||'')) store('pf_pin',null); toast(e.message||String(e)); });
+    toast(q.kogus&&!(x&&x.kogus>0)?'Server ei tunne veel kulla untse. Uuenda Apps Scripti kood ja tee New version.':nimi+' salvestatud'); },function(e){ setBusy(false); var m=e.message||String(e); if(/PIN/.test(m)) store('pf_pin',null);
+    if(q.kogus&&/Sisesta väärtus eurodes/.test(m)) m='Server ei tunne veel kulla untse. Uuenda Apps Scripti kood ja tee New version.';
+    toast(m); });
 }
 function kustutaVara(nimi, nupp, pinEl){
   if(nupp.dataset.kindel!=='1'){ nupp.dataset.kindel='1'; nupp.textContent='Kustuta päriselt?'; setTimeout(function(){ if(nupp.isConnected){ nupp.dataset.kindel=''; nupp.textContent='Kustuta'; } },4000); return; }
