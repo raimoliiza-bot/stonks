@@ -166,7 +166,9 @@
 
   /* vara jaotus */
   .vara{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
-  .vara svg{flex:0 0 auto}
+  .varagraaf{display:flex;gap:14px;flex:0 1 auto;justify-content:flex-start;max-width:100%}
+  .varagraaf svg{flex:1 1 0;width:180px;max-width:180px;min-width:0;height:auto}
+  .varagraaf [data-sektor]:focus-visible{outline:none;stroke:var(--text);stroke-width:3}
   .varalist{list-style:none;margin:0;padding:0;flex:1 1 220px;min-width:0}
   .varalist li{display:grid;grid-template-columns:12px 1fr auto 52px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:14.5px}
   .varalist li i{width:12px;height:12px;border-radius:3px}
@@ -681,13 +683,42 @@ function varaOsad(d){
   return osad;
 }
 function sooerik(osad, kokku){
-  var R=80, r=50, cx=90, cy=90, a0=-Math.PI/2, svg='<svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Vara jaotus">';
-  if(osad.length===1){ svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+osad[0].c+'" stroke-width="'+(R-r)+'"/>'; }
-  else osad.forEach(function(o){
-    var a1=a0+o.v/kokku*2*Math.PI, suur=(a1-a0)>Math.PI?1:0, p=function(rad,a){ return (cx+rad*Math.cos(a)).toFixed(2)+' '+(cy+rad*Math.sin(a)).toFixed(2); };
-    svg+='<path d="M'+p(R,a0)+'A'+R+' '+R+' 0 '+suur+' 1 '+p(R,a1)+'L'+p(r,a1)+'A'+r+' '+r+' 0 '+suur+' 0 '+p(r,a0)+'Z" fill="'+o.c+'" stroke="var(--bg)" stroke-width="2"><title>'+esc(o.n)+': '+eur(o.v)+' ('+nf1.format(o.v/kokku*100)+'%)</title></path>';
+  var R=80, r=50, cx=90, cy=90, a0=-Math.PI/2, val=null;
+  osad.forEach(function(o){ if(S.varaValik===o.n) val=o; });
+  var svg='<svg viewBox="0 0 180 180" role="img" aria-label="Vara jaotus. Vajuta sektorile, et näha selle nime ja osakaalu.">';
+  osad.forEach(function(o){
+    var osa=o.v/kokku, tuhm=val&&val!==o?' opacity=".3"':'', attr=' data-sektor="'+esc(o.n)+'" tabindex="0" role="button" aria-label="'+esc(o.n)+', '+nf1.format(osa*100)+'%" style="cursor:pointer"'+tuhm;
+    if(osad.length===1||osa>0.9995){ svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+o.c+'" stroke-width="'+(R-r)+'"'+attr+'/>'; return; }
+    var a1=a0+osa*2*Math.PI, suur=(a1-a0)>Math.PI?1:0, p=function(rad,a){ return (cx+rad*Math.cos(a)).toFixed(2)+' '+(cy+rad*Math.sin(a)).toFixed(2); };
+    svg+='<path d="M'+p(R,a0)+'A'+R+' '+R+' 0 '+suur+' 1 '+p(R,a1)+'L'+p(r,a1)+'A'+r+' '+r+' 0 '+suur+' 0 '+p(r,a0)+'Z" fill="'+o.c+'" stroke="var(--bg)" stroke-width="2"'+attr+'/>';
     a0=a1; });
-  return svg+'<text x="90" y="86" text-anchor="middle" fill="var(--muted)" font-size="11.5">Kõik kokku</text><text x="90" y="106" text-anchor="middle" fill="var(--text)" font-size="17" font-weight="600">'+eur(kokku)+'</text></svg>';
+  if(val){
+    var nimi=val.n.length>13?val.n.slice(0,12)+'…':val.n;
+    svg+='<text x="90" y="76" text-anchor="middle" fill="var(--muted)" font-size="11.5">'+esc(nimi)+'</text>'+
+         '<text x="90" y="98" text-anchor="middle" fill="var(--text)" font-size="20" font-weight="600">'+nf1.format(val.v/kokku*100)+'%</text>'+
+         '<text x="90" y="114" text-anchor="middle" fill="var(--muted)" font-size="11.5">'+eur(val.v)+'</text>';
+  } else svg+='<text x="90" y="86" text-anchor="middle" fill="var(--muted)" font-size="11.5">Kõik kokku</text><text x="90" y="106" text-anchor="middle" fill="var(--text)" font-size="17" font-weight="600">'+eur(kokku)+'</text>';
+  return svg+'</svg>';
+}
+// Kulla kogus kilogrammi suhtes: 1 kg = 32,1507 troiuntsi. Näidatakse ainult siis, kui on untsides sisestatud kulda.
+var UNTS_G=31.1034768, KG_UNTSE=1000/UNTS_G;
+function kullaMoodik(d){
+  var untse=0; (d.varad||[]).forEach(function(x){ if(x.kogus>0&&(!x.ticker||x.ticker==='GC=F')) untse+=x.kogus; });
+  if(!(untse>0)) return '';
+  var osa=untse/KG_UNTSE, g=untse*UNTS_G, R=65, C=2*Math.PI*R, t=Math.min(osa,1);
+  var jaak=KG_UNTSE-untse;
+  return '<svg viewBox="0 0 180 180" role="img" aria-label="Kulda on '+nf1.format(osa*100)+'% kilogrammist">'+
+    '<circle cx="90" cy="90" r="'+R+'" fill="none" stroke="#bb8820" stroke-opacity=".22" stroke-width="30"/>'+
+    '<circle cx="90" cy="90" r="'+R+'" fill="none" stroke="#bb8820" stroke-width="30" stroke-dasharray="'+(t*C).toFixed(2)+' '+C.toFixed(2)+'" transform="rotate(-90 90 90)"/>'+
+    '<text x="90" y="76" text-anchor="middle" fill="var(--muted)" font-size="11.5">Kuld, 1 kg</text>'+
+    '<text x="90" y="98" text-anchor="middle" fill="var(--text)" font-size="20" font-weight="600">'+nf1.format(osa*100)+'%</text>'+
+    '<text x="90" y="114" text-anchor="middle" fill="var(--muted)" font-size="11.5">'+nf0.format(Math.round(g))+' g</text></svg>';
+}
+function kullaTekst(d){
+  var untse=0; (d.varad||[]).forEach(function(x){ if(x.kogus>0&&(!x.ticker||x.ticker==='GC=F')) untse+=x.kogus; });
+  if(!(untse>0)) return '';
+  var jaak=KG_UNTSE-untse;
+  return '<p class="cmp-note">Kulda on '+qty(Math.round(untse*1000)/1000)+' untsi ehk '+nf0.format(Math.round(untse*UNTS_G))+' g. '+(jaak>0.0005?'Kilogrammini on puudu '+nf2.format(jaak)+' untsi ('+nf0.format(Math.round(jaak*UNTS_G))+' g).':'Kilogramm on täis.')+'</p>';
 }
 function viewYlevaade(d){
   var c=d.kokku, h='', A=aastad(d), vd=d.vordlus||[], a0=d.ajalugu[0], aL=d.ajalugu[d.ajalugu.length-1];
@@ -707,7 +738,7 @@ function viewYlevaade(d){
   }).join('');
   var nullid=d.varad.filter(function(x){ return !(x.v>0); });
   h+=fold('vara','Kogu vara','',
-     (kokku>0?'<div class="vara">'+sooerik(osad,kokku)+'<ul class="varalist">'+read+'</ul></div>':'<p class="empty">Vara pole veel sisestatud.</p>')+
+     (kokku>0?'<div class="vara"><div class="varagraaf">'+sooerik(osad,kokku)+kullaMoodik(d)+'</div><ul class="varalist">'+read+'</ul></div>'+kullaTekst(d):'<p class="empty">Vara pole veel sisestatud.</p>')+
      (nullid.length?'<p class="cmp-note">Väärtuseta: '+nullid.map(function(x){ return '<button type="button" class="link" data-vara-tais="'+esc(x.vara)+'">'+esc(x.vara)+'</button>'; }).join(', ')+'</p>':'')+
      '<div class="varauus"><div style="flex-basis:100%">'+segHtml('segVara',[['summa','Summa eurodes'],['kuld','Kuld untsides']],S.varaTyyp)+'</div>'+
        '<input id="nvName" placeholder="'+(S.varaTyyp==='kuld'?'Nimi':'Uus vara, nt Pension')+'" maxlength="30" aria-label="Vara nimi"'+(S.varaTyyp==='kuld'?' value="Kuld"':'')+'>'+
@@ -715,7 +746,7 @@ function viewYlevaade(d){
          ?'<input inputmode="decimal" id="nvKogus" placeholder="Kogus, untsi" aria-label="Kogus untsides"><input inputmode="decimal" id="nvOst" placeholder="Ostuhind, €/unts" aria-label="Ostuhind eurodes untsi kohta">'
          :'<input inputmode="decimal" id="nvVal" placeholder="Väärtus, €" aria-label="Väärtus eurodes">')+
        (pin?'':'<input id="nvPin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off">')+'<button type="button" class="btn" id="nvAdd">Lisa vara</button></div>'+
-     '<p class="cmp-note">Vajuta varale, et seda muuta või kustutada. Kulla väärtus arvutatakse untsi turuhinnast (kullafutuur, eurodesse ümber arvestatud); füüsilise kulla müügihind võib sellest veidi erineda. Mitme ostu korral pane koguseks summa ja ostuhinnaks keskmine.</p>',
+     '<p class="cmp-note">Vajuta diagrammi sektorile, et näha selle nime ja osakaalu. Vajuta nimekirjas varale, et seda muuta või kustutada. Kulla väärtus arvutatakse untsi turuhinnast (kullafutuur, eurodesse ümber arvestatud); füüsilise kulla müügihind võib sellest veidi erineda. Mitme ostu korral pane koguseks summa ja ostuhinnaks keskmine.</p>',
      '<b class="gold">'+eur(kokku)+'</b>'+(osad.length>1?' '+osad.length+' osas':''), true);
 
   var aastaid=a0&&aL?(ms(aL.d)-ms(a0.d))/864e5/365.25:0, cagr=aastaid>0.5&&a0.h>0?Math.pow(aL.h/a0.h,1/aastaid)-1:null;
@@ -776,7 +807,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 5, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 6, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); }
 }
 function fail(e){
@@ -953,12 +984,14 @@ document.addEventListener('click',function(ev){
     if(b.id==='bAll'){ var k2=findTicker($('iTicker').value), p=k2?held(k2.t):null; if(p){ $('iKogus').value=String(p.kogus).replace('.',','); syncForm(); } return; }
     return;
   }
+  var sk=ev.target.closest('[data-sektor]'); if(sk){ S.varaValik=S.varaValik===sk.getAttribute('data-sektor')?null:sk.getAttribute('data-sektor'); render(); return; }
+  if(S.varaValik&&S.view==='ulevaade'&&ev.target.closest('.varagraaf')){ S.varaValik=null; render(); return; }
   if(ev.target.closest('[data-cash]')){ openForm('Jääk'); return; }
   var va=ev.target.closest('[data-vara-ava]'); if(va){ S.varaAva=S.varaAva===va.dataset.varaAva?null:va.dataset.varaAva; S.varaAvaTyyp=null; render(); var vi=$('veVal')||$('veKogus'); if(vi) vi.focus(); return; }
   row=ev.target.closest('tr.row');
   if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
 });
-document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches&&ev.target.matches('tr.row,[data-vara-ava]')){ ev.preventDefault(); ev.target.click(); } });
+document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches&&ev.target.matches('tr.row,[data-vara-ava],[data-sektor]')){ if(ev.target.matches('[data-sektor]')){ ev.preventDefault(); S.varaValik=S.varaValik===ev.target.getAttribute('data-sektor')?null:ev.target.getAttribute('data-sektor'); render(); return; } ev.preventDefault(); ev.target.click(); } });
 $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.target.id!=='iMarkus') syncForm(ev.target.id==='iTicker'); });
 $('frm').addEventListener('submit',submitForm);
 $('dlg').addEventListener('click',function(ev){ if(ev.target===$('dlg')) $('dlg').close(); });
