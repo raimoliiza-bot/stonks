@@ -198,6 +198,16 @@
   .juhend code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12.5px;color:var(--text)}
   .juhend a{color:var(--blue)}
 
+  /* passiivne tulu */
+  .pmset{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .pmset label{flex:1 1 150px;font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+  .pmset input{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;font-size:16px;width:100%}
+  .pmset input:focus{border-color:var(--blue);outline:0}
+  .passiiv td.kuus{color:var(--gold);font-weight:600;font-size:16px}
+  .passiiv td b{font-weight:500}
+  .pbar{height:5px;border-radius:3px;background:#bb882038;margin:7px 0 3px;max-width:180px;overflow:hidden}
+  .pbar i{display:block;height:100%;background:#bb8820;border-radius:3px}
+
   /* turg ja varad */
   .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
   .strip > div{background:var(--surface);padding:13px 14px;min-width:0}
@@ -720,6 +730,29 @@ function kullaTekst(d){
   var jaak=KG_UNTSE-untse;
   return '<p class="cmp-note">Kulda on '+qty(Math.round(untse*1000)/1000)+' untsi ehk '+nf0.format(Math.round(untse*UNTS_G))+' g. '+(jaak>0.0005?'Kilogrammini on puudu '+nf2.format(jaak)+' untsi ('+nf0.format(Math.round(jaak*UNTS_G))+' g).':'Kilogramm on täis.')+'</p>';
 }
+// ---------- passiivse tulu kalkulaator ----------
+// Määr ja eesmärk on selle seadme mälus; arvutus on teoreetiline (summa × määr / 12), enne makse.
+function passiivRead(d){
+  var maar=num(store('pf_maar')||'4'), siht=num(store('pf_siht')); if(!(maar>=0)) maar=0;
+  var pf=d.kokku.vaartus, pens=0, pensNimed=[];
+  (d.varad||[]).forEach(function(x){ if(x.v>0&&/pension|sammas/i.test(x.vara)){ pens+=x.v; pensNimed.push(x.vara); } });
+  var read=[{n:'Portfell',v:pf}];
+  if(pens>0) read.push({n:'Portfell + '+(pensNimed.length===1?pensNimed[0].toLowerCase():'pension'),v:pf+pens});
+  if(d.kokku.koik>pf+pens+0.5) read.push({n:'Kogu vara',v:d.kokku.koik});
+  var h='<table class="passiiv"><thead><tr><th></th><th>Summa</th><th>Kuus</th><th class="yr-s">Aastas</th></tr></thead><tbody>'+read.map(function(r){
+      var kuus=r.v*maar/100/12, osa=siht>0?kuus/siht:null;
+      return '<tr><td><b>'+esc(r.n)+'</b>'+(osa!==null?'<div class="pbar" role="img" aria-label="'+nf0.format(Math.min(osa,9.99)*100)+'% eesmärgist"><i style="width:'+Math.min(osa,1)*100+'%"></i></div><small>'+nf0.format(osa*100)+'% eesmärgist</small>':'')+'</td>'+
+             '<td>'+eur(r.v)+'</td><td class="kuus">'+eur(kuus)+'</td><td class="yr-s">'+eur(kuus*12)+'</td></tr>'; }).join('')+'</tbody></table>';
+  if(siht>0&&maar>0){ var vaja=siht*12/(maar/100), puudu=vaja-pf;
+    h+='<p class="cmp-note">'+eur(siht)+' kuus eeldab '+nf1.format(maar)+'% juures '+eur(vaja)+' suurust summat. '+(puudu>0?'Portfellil on sellest puudu '+eur(puudu)+'.':'Portfell katab selle ära.')+'</p>'; }
+  return h;
+}
+function passiivHtml(d){
+  return '<div class="pmset"><label>Aastane määr, %<input id="pmMaar" inputmode="decimal" value="'+esc(store('pf_maar')||'4')+'"></label>'+
+         '<label>Eesmärk kuus, € (valikuline)<input id="pmSiht" inputmode="decimal" placeholder="nt 1500" value="'+esc(store('pf_siht'))+'"></label></div>'+
+         '<div id="passiivRead">'+passiivRead(d)+'</div>'+
+         '<p class="cmp-note">Teoreetiline arvutus: summa korda määr, jagatud kaheteistkümnega, enne makse. Määraks sobib oodatav dividenditootlus või protsent, mille plaanid aastas välja võtta.</p>';
+}
 function viewYlevaade(d){
   var c=d.kokku, h='', A=aastad(d), vd=d.vordlus||[], a0=d.ajalugu[0], aL=d.ajalugu[d.ajalugu.length-1];
   var osad=varaOsad(d), kokku=osad.reduce(function(a,o){ return a+o.v; },0), pin=store('pf_pin');
@@ -750,6 +783,8 @@ function viewYlevaade(d){
      '<b class="gold">'+eur(kokku)+'</b>'+(osad.length>1?' '+osad.length+' osas':''), true);
 
   var aastaid=a0&&aL?(ms(aL.d)-ms(a0.d))/864e5/365.25:0, cagr=aastaid>0.5&&a0.h>0?Math.pow(aL.h/a0.h,1/aastaid)-1:null;
+  h+=fold('passiiv','Passiivne tulu','',passiivHtml(d),(function(){ var m=num(store('pf_maar')||'4'); return '<b>'+eur(d.kokku.vaartus*(m>=0?m:0)/100/12)+'</b> kuus, määr '+nf1.format(m>=0?m:0)+'%'; })());
+
   h+=fold('ytootlus','Tootlus','','<dl class="stats">'+
      '<div><dt>Kasum kokku</dt><dd class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'<small>'+pct(c.kasumPr)+' sissemakstust</small></dd></div>'+
      '<div><dt>Tootlus algusest</dt><dd class="'+cls(c.algusestPr)+'">'+pct(c.algusestPr)+'<small>'+(c.algus?'alates '+kp(c.algus):'')+'</small></dd></div>'+
@@ -807,7 +842,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 6, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 7, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); }
 }
 function fail(e){
@@ -992,6 +1027,7 @@ document.addEventListener('click',function(ev){
   if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
 });
 document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches&&ev.target.matches('tr.row,[data-vara-ava],[data-sektor]')){ if(ev.target.matches('[data-sektor]')){ ev.preventDefault(); S.varaValik=S.varaValik===ev.target.getAttribute('data-sektor')?null:ev.target.getAttribute('data-sektor'); render(); return; } ev.preventDefault(); ev.target.click(); } });
+document.addEventListener('input',function(ev){ var id=ev.target.id; if(id==='pmMaar'||id==='pmSiht'){ store(id==='pmMaar'?'pf_maar':'pf_siht',ev.target.value.trim()||null); var el=$('passiivRead'); if(el&&S.data) el.innerHTML=passiivRead(S.data); } });
 $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.target.id!=='iMarkus') syncForm(ev.target.id==='iTicker'); });
 $('frm').addEventListener('submit',submitForm);
 $('dlg').addEventListener('click',function(ev){ if(ev.target===$('dlg')) $('dlg').close(); });
