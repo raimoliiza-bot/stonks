@@ -34,6 +34,11 @@
   .bar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .bar h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
   .bar .grow{flex:1}
+  .kontosel{appearance:none;-webkit-appearance:none;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393a0b1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center/14px;border:1px solid var(--line);border-radius:999px;padding:8px 32px 8px 14px;font-size:14px;font-weight:500;color:var(--text);max-width:150px;text-overflow:ellipsis}
+  .ro .varauus,.ro .detact,.ro [data-vara-tais]{display:none}
+  .ro .clicky{cursor:default}
+  .ro .clicky:hover dt,.ro .clicky:hover td:first-child b,.ro .varalist li.clicky:hover span{text-decoration:none}
+  .ro tr.clicky td small{display:none}
   .seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
   .seg button{border:0;background:none;color:var(--muted);padding:6px 13px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap}
   .seg button[aria-pressed="true"]{background:var(--raised);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
@@ -264,6 +269,7 @@
 <div class="wrap">
   <div class="bar">
     <h1>Portfell</h1>
+    <select id="konto" class="kontosel" aria-label="Konto" hidden></select>
     <div class="grow"></div>
     <button class="btn icon" id="btnRefresh" aria-label="Värskenda hinnad" title="Värskenda hinnad">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
@@ -532,6 +538,7 @@ function drawTable(){
           '<div><span>Sel aastal</span><b class="'+cls(p.aastaPr)+'">'+pct(p.aastaPr)+'</b></div>'+
         '</div>'+
         (pos52!==null?'<div class="range">52 nädala vahemik<div class="track"><i style="left:'+pos52+'%"></i></div><div class="ends"><span>'+price(p.min52)+'</span><span>'+price(p.max52)+'</span></div></div>':'')+
+        (p.osad&&p.osad.length?'<div class="range" style="margin-top:12px">Kontode kaupa: '+p.osad.map(function(o){ return esc(o.n)+' '+qty(o.kogus)+' tk'; }).join(', ')+'</div>':'')+
         '<div class="detact"><button type="button" class="btn" data-act="Ost" data-tk="'+esc(p.t)+'">Osta juurde</button><button type="button" class="btn" data-act="Müük" data-tk="'+esc(p.t)+'">Müü</button><button type="button" class="btn" data-act="Dividend" data-tk="'+esc(p.t)+'">Lisa dividend</button></div>'+
       '</div></td></tr>';
     }
@@ -599,6 +606,7 @@ function drawDay(){
 // ---------- vaated ----------
 function notes(d){
   var h='';
+  if(d.koos&&S.view!=='seaded') h+='<div class="note" style="background:#60a5fa14;border-color:#60a5fa40;color:#b9d6fb">Koondvaade: '+esc((d.portfellid||[]).join(' ja '))+' koos. Siin saab ainult vaadata; muutmiseks vali ülalt konto.</div>';
   if(S.demo) h+='<div class="note">Need on näidisandmed. Päris andmete nägemiseks kleebi oma Apps Scripti /exec link vahekaardile Seaded.</div>';
   if(S.vana) h+='<div class="note">Värskeid andmeid ei saanud laadida. Näitan viimati laetud seisu (hinnad '+esc(d.uuendatud||'teadmata ajast')+').</div>';
   if(d.hinnata.length) h+='<div class="note">Hind puudub: '+esc(d.hinnata.join(', '))+'. Need positsioonid ei ole kogusummas sees. Kontrolli tickerit lehel Hinnad.</div>';
@@ -661,7 +669,7 @@ function viewPortfell(d){
 
   h+=fold('tehingud','Viimased tehingud','',(d.tehingud.length?'<ul class="tx">'+d.tehingud.map(function(t){
       var kaup=t.tyyp==='Ost'||t.tyyp==='Müük', sisse=t.tyyp==='Müük'||t.tyyp==='Sissemakse'||t.tyyp==='Dividend'||(t.tyyp==='Korrektsioon'&&t.summa>=0);
-      return '<li><time>'+(t.d?kp(t.d,true):'')+'</time><div><b style="font-weight:500">'+esc(t.tyyp)+(t.kuva?' '+esc(t.kuva):'')+'</b>'+(kaup?'<small>'+qty(t.kogus)+' tk, hind '+price(t.hind)+' '+esc(t.val)+'</small>':'')+(t.markus?'<small>'+esc(t.markus)+'</small>':'')+'</div><div class="'+(sisse?'up':'')+'">'+(sisse?'+':'−')+eur2(Math.abs(t.summa))+'</div></li>'; }).join('')+'</ul>'
+      return '<li><time>'+(t.d?kp(t.d,true):'')+'</time><div><b style="font-weight:500">'+esc(t.tyyp)+(t.kuva?' '+esc(t.kuva):'')+'</b>'+(t.omanik?'<small>'+esc(t.omanik)+'</small>':'')+(kaup?'<small>'+qty(t.kogus)+' tk, hind '+price(t.hind)+' '+esc(t.val)+'</small>':'')+(t.markus?'<small>'+esc(t.markus)+'</small>':'')+'</div><div class="'+(sisse?'up':'')+'">'+(sisse?'+':'−')+eur2(Math.abs(t.summa))+'</div></li>'; }).join('')+'</ul>'
       :'<p class="empty" style="text-align:left;padding:6px 0">Tehinguid veel pole. Esimese lisamiseks vajuta üleval „Lisa tehing“.</p>'),d.tehingud.length?d.tehingud.length+' viimast':'');
   return h;
 }
@@ -826,23 +834,30 @@ function viewSeaded(d){
   h+='<div class="set"><h3>PIN</h3><p>PIN-i küsitakse tehingu ja vara väärtuse salvestamisel. Soovi korral jäta see selles seadmes meelde.</p>'+
      '<div class="line"><input id="sPin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" value="'+esc(store('pf_pin'))+'"></div>'+
      '<div class="line"><button type="button" class="btn" id="sPinSave">Jäta meelde</button><button type="button" class="btn" id="sPinClear">Unusta</button></div></div>';
-  if(d.pos) h+='<div class="set"><h3>Vaba raha</h3><p>Raha jääk arvutatakse tehingutest: sissemaksed, ostud, müügid, dividendid ja tasud. Praegu on arvestuses <b style="color:var(--text)">'+eur2(d.kokku.raha)+'</b>. Kui see ei klapi pangaga, sisesta tegelik jääk ja vahe läheb kirja parandusena.</p>'+
+  if(d.pos) h+='<div class="set"><h3>Kontod</h3><p>Ühes Google Sheetis võib olla mitu kontot, näiteks sinu ja kaaslase oma. Konto valid lehe ülaservast; kahe või enama konto korral lisandub valik „Koos“, mis näitab kõiki koos (ainult vaatamiseks). PIN on kõigil kontodel sama.</p>'+
+     '<p style="color:var(--text)">'+(d.portfellid||[]).map(esc).join(', ')+'</p>'+
+     '<div class="line"><input id="kNimi" placeholder="Uue konto nimi" maxlength="20" aria-label="Uue konto nimi"><button type="button" class="btn" id="kLisa">Lisa konto</button></div></div>';
+  if(d.pos&&!d.koos) h+='<div class="set"><h3>Vaba raha</h3><p>Raha jääk arvutatakse tehingutest: sissemaksed, ostud, müügid, dividendid ja tasud. Praegu on arvestuses <b style="color:var(--text)">'+eur2(d.kokku.raha)+'</b>. Kui see ei klapi pangaga, sisesta tegelik jääk ja vahe läheb kirja parandusena.</p>'+
      '<div class="line"><button type="button" class="btn" data-act="Jääk">Paranda raha jääki</button><button type="button" class="btn" data-act="Sissemakse">Lisa sissemakse</button></div></div>';
   h+='<div class="set"><h3>Mida muudetakse Google Sheetsis</h3><p style="margin:0">Kuvanimed ja jälgimisnimekiri on lehel Hinnad (veerud Kuvanimi ja Ticker). Vale tehingu parandamiseks muuda või kustuta rida lehel Tehingud; positsioonid arvutatakse järgmisel värskendusel uuesti. Kulda, pensioni ja muud vara saab lisada vahekaardil „Tootlus ja vara“.</p></div>';
   h+='<details class="set juhend"'+(url||INSIDE?'':' open')+'><summary><h3>Esmane seadistamine: oma Google Sheet</h3></summary>'+
-     '<p>Iga kasutaja andmed on tema enda Google Sheetis. Seadistus võtab umbes kümme minutit ja seda on mugavam teha arvutis.</p><ol>'+
+     '<p>Andmed on sinu enda Google Sheetis. Seda on vaja teha üks kord: samasse Sheeti saab hiljem lisada teisi kontosid (jaotis „Kontod“) ja kõik kasutavad sama linki. Seadistus võtab umbes kümme minutit ja seda on mugavam teha arvutis.</p><ol>'+
      JUHEND.map(function(s){ return '<li><b>'+s[0]+'</b><span>'+s[1]+'</span></li>'; }).join('')+'</ol>'+
      '<p style="margin:0">Hiljem skripti uuendades: Deploy → Manage deployments → pliiats → Version: New version. Nii jääb link samaks.</p></details>';
   return h;
 }
 function render(d){
-  if(d) { S.data=d; S.p=d.portfell; } else d=S.data;
+  if(d) { S.data=d; S.p=d.valik||d.portfell; } else d=S.data;
+  var ks=$('konto'), pf=d.portfellid||[];
+  ks.hidden=pf.length<2;
+  ks.innerHTML=pf.map(function(n){ return '<option value="'+esc(n)+'"'+(n===S.p?' selected':'')+'>'+esc(n)+'</option>'; }).join('')+(pf.length>1?'<option value="*"'+(S.p==='*'?' selected':'')+'>Koos</option>':'');
+  $('btnAdd').hidden=!!d.koos; $('app').classList.toggle('ro',!!d.koos);
   [].forEach.call($('nav').children,function(b){ b.setAttribute('aria-pressed',b.dataset.view===S.view); });
   var h=notes(d);
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 7, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 8, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); }
 }
 function fail(e){
@@ -870,7 +885,7 @@ function load(p, tegevus){
   if(S.busy) return; setBusy(true);
   if(!S.data) $('app').innerHTML='<div class="state">Laen andmeid…</div>';
   var soov=p||S.p||store('pf_p')||'';
-  api(tegevus||'andmed',{p:soov},function(d){ setBusy(false); S.vana=''; if(!S.demo){ store('pf_p',d.portfell); store('pf_last_'+d.portfell,JSON.stringify(d)); } render(d); },
+  api(tegevus||'andmed',{p:soov},function(d){ setBusy(false); S.vana=''; if(!S.demo){ store('pf_p',d.valik||d.portfell); store('pf_last_'+(d.valik||d.portfell),JSON.stringify(d)); } render(d); },
     function(e){ setBusy(false);
       // Võrguta või serveri vea korral näita viimati laetud andmeid, kui need on selles seadmes olemas.
       var c=null; if(apiUrl()&&(!S.data||(soov&&S.data.portfell!==soov))){ try{ c=JSON.parse(store('pf_last_'+soov)||store('pf_last_'+(store('pf_p')||''))||'null'); }catch(x){} }
@@ -921,6 +936,7 @@ function findTicker(txt){
 function held(t){ var r=null; (S.data.pos||[]).forEach(function(p){ if(p.t===t) r=p; }); return r; }
 function openForm(tyyp, ticker){
   if(!S.data||!S.data.pos) return;
+  if(S.data.koos){ toast('Koondvaates ei saa muuta. Vali ülalt konto.'); return; }
   S.tyyp=tyyp||'Ost';
   $('frm').reset(); $('err').textContent='';
   var t=new Date(); $('iKp').value=t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2); $('iKp').max=$('iKp').value;
@@ -1007,6 +1023,9 @@ document.addEventListener('click',function(ev){
     if(b.parentNode.id==='segVara'){ S.varaTyyp=b.dataset.v; render(); return; }
     if(b.parentNode.id==='segVaraE'){ S.varaAvaTyyp=b.dataset.v; render(); var ve=$('veKogus')||$('veVal'); if(ve) ve.focus(); return; }
     if(b.id==='kopeeri'){ kopeeriSkript(); return; }
+    if(b.id==='kLisa'){ var kn=$('kNimi').value.trim(), kp2=($('sPin')&&$('sPin').value)||store('pf_pin');
+      if(!kn){ toast('Kirjuta konto nimi'); return; } if(S.demo){ toast('Need on näidisandmed – siin ei salvestata.'); return; } if(!kp2){ toast('Sisesta PIN (samal lehel ülal)'); return; }
+      setBusy(true); api('konto',{pin:kp2,nimi:kn},function(d){ setBusy(false); S.view='portfell'; S.open=null; store('pf_p',d.valik||d.portfell); render(d); toast(d.teade||'Konto lisatud'); },function(e){ setBusy(false); toast(/Tundmatu tegevus/.test(e.message||'')?'Server ei tunne veel kontosid. Uuenda Apps Scripti kood ja tee New version.':(e.message||String(e))); }); return; }
     if(b.id==='sUrlSave'){ var u=$('sUrl').value.trim();
       if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(u)){ toast('Link peab algama https://script.google.com/ ja lõppema /exec'); return; }
       store('pf_api',u); S.data=null; S.view='portfell'; load(); toast('Link salvestatud'); return; }
@@ -1022,7 +1041,8 @@ document.addEventListener('click',function(ev){
   var sk=ev.target.closest('[data-sektor]'); if(sk){ S.varaValik=S.varaValik===sk.getAttribute('data-sektor')?null:sk.getAttribute('data-sektor'); render(); return; }
   if(S.varaValik&&S.view==='ulevaade'&&ev.target.closest('.varagraaf')){ S.varaValik=null; render(); return; }
   if(ev.target.closest('[data-cash]')){ openForm('Jääk'); return; }
-  var va=ev.target.closest('[data-vara-ava]'); if(va){ S.varaAva=S.varaAva===va.dataset.varaAva?null:va.dataset.varaAva; S.varaAvaTyyp=null; render(); var vi=$('veVal')||$('veKogus'); if(vi) vi.focus(); return; }
+  var va=ev.target.closest('[data-vara-ava]'); if(va&&S.data&&S.data.koos) return;
+  if(va){ S.varaAva=S.varaAva===va.dataset.varaAva?null:va.dataset.varaAva; S.varaAvaTyyp=null; render(); var vi=$('veVal')||$('veKogus'); if(vi) vi.focus(); return; }
   row=ev.target.closest('tr.row');
   if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
 });
@@ -1030,6 +1050,7 @@ document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key==
 document.addEventListener('input',function(ev){ var id=ev.target.id; if(id==='pmMaar'||id==='pmSiht'){ store(id==='pmMaar'?'pf_maar':'pf_siht',ev.target.value.trim()||null); var el=$('passiivRead'); if(el&&S.data) el.innerHTML=passiivRead(S.data); } });
 $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.target.id!=='iMarkus') syncForm(ev.target.id==='iTicker'); });
 $('frm').addEventListener('submit',submitForm);
+$('konto').addEventListener('change',function(){ S.open=null; S.varaAva=null; S.varaValik=null; store('pf_p',this.value); load(this.value); });
 $('dlg').addEventListener('click',function(ev){ if(ev.target===$('dlg')) $('dlg').close(); });
 var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(function(){ if(S.data&&S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); } },120); });
 setInterval(function(){ if(!document.hidden&&S.data&&!$('dlg').open&&S.view!=='seaded') load(); },5*60*1000);

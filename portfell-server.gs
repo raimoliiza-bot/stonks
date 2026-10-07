@@ -57,15 +57,24 @@ function PF_api(tegevus, q) {
     }
     if (tegevus === 'varaKustuta') {
       PF_kontrolliPin_(q.pin);
-      PF_kustutaVara_(q.vara);
+      PF_kustutaVara_(q.vara, q.p);
       var dk = PF_andmed_(q.p);
       dk.teade = 'Kustutatud';
       return dk;
     }
+    if (tegevus === 'konto') {
+      PF_kontrolliPin_(q.pin);
+      var uus = PF_lisaKonto_(q.nimi);
+      var dn = PF_andmed_(uus);
+      dn.teade = 'Konto ' + uus + ' lisatud';
+      return dn;
+    }
     if (tegevus === 'tehing') {
       PF_kontrolliPin_(q.pin);
-      var teade = PF_lisaTehing(PF_puhastaTehing_(q.t));
-      var d = PF_andmed_(q.t.portfell);
+      var tt = PF_puhastaTehing_(q.t);
+      tt.portfell = PF_konto_(tt.portfell);
+      var teade = PF_lisaTehing(tt);
+      var d = PF_andmed_(tt.portfell);
       d.teade = teade;
       return d;
     }
@@ -102,7 +111,7 @@ function PF_varaLeht_() {
  *             väärtus arvutatakse turuhinnast
  */
 function PF_salvestaVara_(q) {
-  var portfell = PF_portfellid_()[0];
+  var portfell = PF_konto_(q.p);
   var vara = String(q.vara || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, 30);
   if (!vara) throw new Error('Vara nimi puudub');
   var rida, kogus = PF_num_(q.kogus);
@@ -129,8 +138,8 @@ function PF_salvestaVara_(q) {
   L.sh.appendRow(rida);
 }
 
-function PF_kustutaVara_(vara) {
-  var portfell = PF_portfellid_()[0], L = PF_varaLeht_(), alles = [], leitud = false;
+function PF_kustutaVara_(vara, konto) {
+  var portfell = PF_konto_(konto), L = PF_varaLeht_(), alles = [], leitud = false;
   vara = String(vara || '').trim().toLowerCase();
   for (var i = 0; i < L.read.length; i++) {
     if (!leitud && String(L.read[i][0]).trim() === portfell && String(L.read[i][1]).trim().toLowerCase() === vara) { leitud = true; continue; }
@@ -139,6 +148,53 @@ function PF_kustutaVara_(vara) {
   if (!leitud) throw new Error('Sellist vara ei leitud');
   L.sh.getRange(2, 1, L.read.length, PF_VARA_PAIS.length).clearContent();
   if (alles.length) L.sh.getRange(2, 1, alles.length, PF_VARA_PAIS.length).setValues(alles);
+}
+
+/** Uus konto samas failis. Nimi jääb meelde ka siis, kui kontol pole veel ühtegi tehingut. */
+function PF_lisaKonto_(nimi) {
+  nimi = String(nimi || '').trim();
+  if (!/^[A-Za-zÀ-ž0-9][A-Za-zÀ-ž0-9 \-]{0,19}$/.test(nimi)) throw new Error('Konto nimi võib sisaldada tähti, numbreid, tühikut ja sidekriipsu (kuni 20 märki)');
+  if (nimi.toLowerCase() === 'koos') throw new Error('Nimi „Koos“ on koondvaate jaoks kinni');
+  var pf = PF_portfellid_();
+  for (var i = 0; i < pf.length; i++) if (pf[i].toLowerCase() === nimi.toLowerCase()) throw new Error('Selline konto on juba olemas');
+  var prop = PropertiesService.getScriptProperties(), k = [];
+  try { k = JSON.parse(prop.getProperty('PF_KONTOD') || '[]'); } catch (e) {}
+  if (!PF_loeTehingud_().length && pf.length === 1) k.push(pf[0]);   // tühja faili vaikimisi konto jääb esimeseks
+  k.push(nimi);
+  prop.setProperty('PF_KONTOD', JSON.stringify(k));
+  return nimi;
+}
+
+/** Mitme konto seis kokku: sama ticker liidetakse üheks reaks (kogus ja soetus summana, ostuhind kaalutud keskmine). */
+function PF_seisKoos_(nimed, hinnad, osad) {
+  if (nimed.length === 1) { var yks = PF_seis_(nimed[0], hinnad); osad[nimed[0]] = yks; return yks; }
+  var kokku = { read: [], raha: 0, aktsiad: 0, kokku: 0, netoSisse: 0, realiseeritud: 0, dividendid: 0, tasud: 0, tana: 0, puudu: [] }, rida = {};
+  for (var i = 0; i < nimed.length; i++) {
+    var s = PF_seis_(nimed[i], hinnad); osad[nimed[i]] = s;
+    kokku.raha += s.raha; kokku.aktsiad += s.aktsiad; kokku.kokku += s.kokku; kokku.netoSisse += s.netoSisse;
+    kokku.realiseeritud += s.realiseeritud; kokku.dividendid += s.dividendid; kokku.tasud += s.tasud; kokku.tana += s.tana;
+    for (var p = 0; p < s.puudu.length; p++) if (kokku.puudu.indexOf(s.puudu[p]) < 0) kokku.puudu.push(s.puudu[p]);
+    for (var j = 0; j < s.read.length; j++) {
+      var r = s.read[j], m = rida[r.ticker];
+      if (!m) {
+        m = rida[r.ticker] = { ticker: r.ticker, kuva: r.kuva, nimi: r.nimi, valuuta: r.valuuta, kogus: 0, kuluOma: 0, soetus: 0, hind: r.hind,
+                               vaartus: r.vaartus === null ? null : 0, kasum: null, kasumPr: null, tana: null, tanaPr: r.tanaPr,
+                               nadalPr: r.nadalPr, aastaPr: r.aastaPr, osad: [] };
+        kokku.read.push(m);
+      }
+      m.kogus += r.kogus; m.kuluOma += r.ostuhind * r.kogus; m.soetus += r.soetus;
+      if (r.vaartus !== null && m.vaartus !== null) m.vaartus += r.vaartus;
+      if (r.tana !== null) m.tana = (m.tana || 0) + r.tana;
+      m.osad.push({ n: nimed[i], kogus: r.kogus });
+    }
+  }
+  for (var k = 0; k < kokku.read.length; k++) {
+    var x = kokku.read[k];
+    x.ostuhind = x.kogus > 0 ? x.kuluOma / x.kogus : 0;
+    if (x.vaartus !== null) { x.kasum = x.vaartus - x.soetus; x.kasumPr = x.soetus > 0 ? x.kasum / x.soetus : null; }
+  }
+  kokku.read.sort(function (a, b) { return (b.vaartus || 0) - (a.vaartus || 0); });
+  return kokku;
 }
 
 /** Lubab läbi ainult oodatud väljad ja ei lase lahtrisse valemit kirjutada. */
@@ -170,13 +226,15 @@ function PF_viimaneUuendus_(hinnad) {
 }
 
 /** Kõik, mida vaade ühe portfelli kohta vajab. */
-function PF_andmed_(nimi) {
-  // Üks portfell faili kohta: äpp näeb alati selle faili (esimest) portfelli. Tühi portfell on lubatud,
+function PF_andmed_(soov) {
+  // soov = konto nimi või '*' (kõik kontod koos, ainult vaatamiseks). Tühi konto on lubatud,
   // et esimese tehingu saaks lisada äpist.
-  nimi = PF_portfellid_()[0];
-  var portfellid = [nimi];
+  var portfellid = PF_portfellid_(), koos = soov === '*' && portfellid.length > 1, nimi = 'Koos';
+  if (!koos) { nimi = portfellid[0]; for (var pi = 0; pi < portfellid.length; pi++) if (portfellid[pi].toLowerCase() === String(soov || '').trim().toLowerCase()) nimi = portfellid[pi]; }
+  var nimed = koos ? portfellid : [nimi], osaSeis = {};
+  var omanik = function (x) { x = String(x).trim(); return nimed.indexOf(x) >= 0 ? x : null; };
 
-  var hinnad = PF_loeHinnad_(), s = PF_seis_(nimi, hinnad), r2 = function (x) { return PF_umarda_(x, 2); };
+  var hinnad = PF_loeHinnad_(), s = PF_seisKoos_(nimed, hinnad, osaSeis), r2 = function (x) { return PF_umarda_(x, 2); };
   var n = function (x, k) { return (typeof x === 'number' && isFinite(x)) ? PF_umarda_(x, k) : null; };
   var onFx = function (t) { return /=X$/.test(t); };
 
@@ -191,23 +249,48 @@ function PF_andmed_(nimi) {
                hind: n(r.hind, 4), v: n(r.vaartus, 2), soetus: n(r.soetus, 2), kasum: n(r.kasum, 2), kasumPr: n(r.kasumPr, 4),
                tana: n(r.tana, 2), tanaPr: n(r.tanaPr, 4), nadalPr: n(r.nadalPr, 4), aastaPr: n(r.aastaPr, 4),
                osakaal: s.kokku > 0 && r.vaartus !== null ? n(r.vaartus / s.kokku, 4) : null,
-               max52: n(h.max52, 4), min52: n(h.min52, 4), ok: ok });
+               max52: n(h.max52, 4), min52: n(h.min52, 4), ok: ok, osad: koos ? r.osad : undefined });
   }
 
   // ajalugu + tänane seis reaalajas
   var ah = PF_leht_(PF_CFG.lehed.ajalugu), viimane = ah.getLastRow(), ajalugu = [];
   var read = viimane >= 2 ? ah.getRange(2, 1, viimane - 1, PF_AJALUGU_PAIS.length).getValues() : [];
   var tana = PF_paev_(new Date());
-  for (var a = 0; a < read.length; a++) {
-    if (String(read[a][1]).trim() !== nimi || !(read[a][0] instanceof Date)) continue;
-    var paev = PF_paev_(read[a][0]);
-    if (paev >= tana) continue;                                 // tänane punkt arvutatakse värskelt
-    var bb = [];
-    for (var bk = 0; bk < PF_CFG.vordlus.length; bk++) bb.push(n(PF_num_(read[a][PF_AJALUGU_ALUS + bk]) || NaN, 2));
-    ajalugu.push({ d: paev, v: r2(PF_num_(read[a][2])), s: r2(PF_num_(read[a][3])), h: PF_umarda_(PF_num_(read[a][6]), 4), b: bb });
+  var osak = 100, loeB = function (rida) { var bb = []; for (var bk = 0; bk < PF_CFG.vordlus.length; bk++) bb.push(n(PF_num_(rida[PF_AJALUGU_ALUS + bk]) || NaN, 2)); return bb; };
+  if (!koos) {
+    for (var a = 0; a < read.length; a++) {
+      if (String(read[a][1]).trim() !== nimi || !(read[a][0] instanceof Date)) continue;
+      var paev = PF_paev_(read[a][0]);
+      if (paev >= tana) continue;                               // tänane punkt arvutatakse värskelt
+      ajalugu.push({ d: paev, v: r2(PF_num_(read[a][2])), s: r2(PF_num_(read[a][3])), h: PF_umarda_(PF_num_(read[a][6]), 4), b: loeB(read[a]) });
+    }
+    var eel = ajalugu.length ? ajalugu[ajalugu.length - 1] : null;
+    if (eel) osak = eel.h * (1 + PF_dietz_(s.kokku, eel.v, s.netoSisse - eel.s));
+  } else {
+    // Koondajalugu: iga kuupäeva kohta kontode viimane teadaolev seis kokku. Osaku hind arvutatakse uuesti;
+    // konto lisandumine loetakse rahavooks kogu selle väärtuses, et varasem kasum ei näiks ühe päeva tootlusena.
+    var perKp = {}, kpd = [], viim = {}, hK = 100, eelV = null;
+    for (var ka = 0; ka < read.length; ka++) {
+      var om = omanik(read[ka][1]);
+      if (!om || !(read[ka][0] instanceof Date)) continue;
+      var kp = PF_paev_(read[ka][0]);
+      if (kp >= tana) continue;
+      if (!perKp[kp]) { perKp[kp] = {}; kpd.push(kp); }
+      perKp[kp][om] = { v: PF_num_(read[ka][2]) || 0, s: PF_num_(read[ka][3]) || 0, b: loeB(read[ka]) };
+    }
+    kpd.sort();
+    for (var kd = 0; kd < kpd.length; kd++) {
+      var paevas = perKp[kpd[kd]], voog = 0, bK = null, vK = 0, sK = 0;
+      for (var on in paevas) { voog += viim[on] ? paevas[on].s - viim[on].s : paevas[on].v; viim[on] = paevas[on]; bK = bK || paevas[on].b; }
+      for (var vn in viim) { vK += viim[vn].v; sK += viim[vn].s; }
+      if (eelV !== null) hK = hK * (1 + PF_dietz_(vK, eelV, voog));
+      ajalugu.push({ d: kpd[kd], v: r2(vK), s: r2(sK), h: PF_umarda_(hK, 4), b: bK });
+      eelV = vK;
+    }
+    var voogN = 0;
+    for (var ni = 0; ni < nimed.length; ni++) { var cs = osaSeis[nimed[ni]]; voogN += viim[nimed[ni]] ? cs.netoSisse - viim[nimed[ni]].s : cs.kokku; }
+    osak = eelV !== null ? hK * (1 + PF_dietz_(s.kokku, eelV, voogN)) : 100;
   }
-  var osak = 100, eel = ajalugu.length ? ajalugu[ajalugu.length - 1] : null;
-  if (eel) osak = eel.h * (1 + PF_dietz_(s.kokku, eel.v, s.netoSisse - eel.s));
   var bNyyd = [], vordlus = [];
   for (var bn = 0; bn < PF_CFG.vordlus.length; bn++) {
     var bh = hinnad[PF_CFG.vordlus[bn]] || {};
@@ -228,13 +311,19 @@ function PF_andmed_(nimi) {
   var joon = [], psh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Päev');
   var minut = function (dt) { var hm = Utilities.formatDate(dt, PF_CFG.ajavoond, 'HH:mm').split(':'); return (+hm[0]) * 60 + (+hm[1]); };
   if (psh && psh.getLastRow() >= 2) {
-    var pread = psh.getRange(2, 1, psh.getLastRow() - 1, 3 + pv.length).getValues();
+    var pread = psh.getRange(2, 1, psh.getLastRow() - 1, 3 + pv.length).getValues(), grupp = {}, mj = [];
     for (var pj = 0; pj < pread.length; pj++) {
-      var pr = pread[pj];
-      if (!(pr[0] instanceof Date) || PF_paev_(pr[0]) !== tana || String(pr[1]).trim() !== nimi) continue;
+      var pr = pread[pj], po = omanik(pr[1]);
+      if (!(pr[0] instanceof Date) || PF_paev_(pr[0]) !== tana || !po) continue;
       var pb = []; for (var pc = 0; pc < pv.length; pc++) pb.push(n(PF_num_(pr[3 + pc]), 5));
-      joon.push({ m: minut(pr[0]), p: n(PF_num_(pr[2]), 5), b: pb });
+      // koondvaates kaalutakse kontode päevamuutus nende aktsiate eilse väärtusega
+      var kaal = koos ? Math.max(osaSeis[po].aktsiad - osaSeis[po].tana, 0) : 1, pm = minut(pr[0]), pp = PF_num_(pr[2]);
+      if (!isFinite(pp) || !(kaal > 0)) continue;
+      if (!grupp[pm]) { grupp[pm] = { wp: 0, w: 0, b: pb }; mj.push(pm); }
+      grupp[pm].wp += pp * kaal; grupp[pm].w += kaal;
     }
+    mj.sort(function (x, y) { return x - y; });
+    for (var gi = 0; gi < mj.length; gi++) joon.push({ m: mj[gi], p: n(grupp[mj[gi]].wp / grupp[mj[gi]].w, 5), b: grupp[mj[gi]].b });
   }
   var eilneV = s.aktsiad - s.tana;
   if (!s.puudu.length && eilneV > 0) {
@@ -272,8 +361,10 @@ function PF_andmed_(nimi) {
   var varad = [], varadKokku = 0, sh = PF_leht_(PF_CFG.lehed.seaded), vr = sh.getLastRow();
   var vread = vr >= 2 ? sh.getRange(2, 1, vr - 1, 6).getValues() : [];
   for (var f = 0; f < vread.length; f++) {
-    if (String(vread[f][0]).trim() !== nimi || !String(vread[f][1]).trim()) continue;
-    var vv = PF_num_(vread[f][2]), vkogus = PF_num_(vread[f][3]), vara = { vara: String(vread[f][1]).trim(), v: vv > 0 ? r2(vv) : 0 };
+    var vo = omanik(vread[f][0]);
+    if (!vo || !String(vread[f][1]).trim()) continue;
+    var vv = PF_num_(vread[f][2]), vkogus = PF_num_(vread[f][3]);
+    var vara = { vara: String(vread[f][1]).trim() + (koos ? ' (' + vo + ')' : ''), v: vv > 0 ? r2(vv) : 0 };
     if (vkogus > 0) {
       var vt = String(vread[f][5]).trim().toUpperCase() || 'GC=F', vh = hinnad[vt] || {}, vost = PF_num_(vread[f][4]) || 0;
       vara.kogus = vkogus; vara.ost = vost; vara.ticker = vt; vara.v = 0;
@@ -296,19 +387,20 @@ function PF_andmed_(nimi) {
   var tread = tr >= 2 ? th.getRange(2, 1, tr - 1, PF_TEHING_PAIS.length).getValues() : [];
   for (var g = tread.length - 1; g >= 0 && tehingud.length < 12; g--) {
     var q = tread[g];
-    if (String(q[1]).trim() !== nimi || !q[2] || String(q[10]).indexOf('algseis') === 0) continue;
+    var qo = omanik(q[1]);
+    if (!qo || !q[2] || String(q[10]).indexOf('algseis') === 0) continue;
     var tk = String(q[3]).trim();
     tehingud.push({ d: q[0] instanceof Date ? PF_paev_(q[0]) : '', tyyp: String(q[2]), t: tk,
                     kuva: tk ? ((hinnad[tk] || {}).kuva || PF_kuvanimi_(tk)) : '',
                     kogus: n(PF_num_(q[4]), 6), hind: n(PF_num_(q[5]), 4), val: String(q[6]), summa: n(PF_num_(q[9]), 2),
-                    markus: String(q[10] || '') });
+                    markus: String(q[10] || ''), omanik: koos ? qo : undefined });
   }
 
   var uuendatud = PF_viimaneUuendus_(hinnad), eilne = s.aktsiad - s.tana;
   return {
-    portfellid: portfellid, portfell: nimi,
+    portfellid: portfellid, portfell: nimi, valik: koos ? '*' : nimi, koos: koos,
     uuendatud: uuendatud ? Utilities.formatDate(uuendatud, PF_CFG.ajavoond, 'dd.MM.yyyy HH:mm') : '',
-    vanu: vanu, hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
+    serveriVersioon: 6, vanu: vanu, hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
     kokku: {
       vaartus: r2(s.kokku), aktsiad: r2(s.aktsiad), raha: r2(s.raha), netoSisse: r2(s.netoSisse),
       kasum: r2(s.kokku - s.netoSisse), kasumPr: s.netoSisse > 0 ? n((s.kokku - s.netoSisse) / s.netoSisse, 4) : null,
@@ -395,16 +487,31 @@ function PF_leht_(nimi) {
   if (!sh) throw new Error('Lehte "' + nimi + '" ei leitud – käivita PF_seadista()');
   return sh;
 }
-/** Portfellide nimed lehelt Tehingud (esinemise järjekorras). Tühjas failis seadistuse nimi. Äpp kasutab esimest. */
+/**
+ * Kontode (portfellide) nimed: lehelt Tehingud esinemise järjekorras, siis lehelt Seaded ja äpist lisatud kontod.
+ * Tühjas failis seadistuse nimi.
+ */
 function PF_portfellid_() {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PF_CFG.lehed.tehingud), out = [], olemas = {};
-  var viimane = sh ? sh.getLastRow() : 0;
-  if (viimane >= 2) {
-    var v = sh.getRange(2, 2, viimane - 1, 1).getValues();
-    for (var i = 0; i < v.length; i++) { var n = String(v[i][0]).trim(); if (n && !olemas[n]) { olemas[n] = true; out.push(n); } }
-  }
-  if (!out.length) { for (var a in PF_CFG.algseis) out.push(a); }
+  var ss = SpreadsheetApp.getActiveSpreadsheet(), out = [], olemas = {};
+  var lisa = function (x) { var n = String(x || '').trim(); if (n && !olemas[n.toLowerCase()]) { olemas[n.toLowerCase()] = true; out.push(n); } };
+  var loe = function (leht, veerg) {
+    var sh = ss.getSheetByName(leht), viimane = sh ? sh.getLastRow() : 0;
+    if (viimane < 2) return;
+    var v = sh.getRange(2, veerg, viimane - 1, 1).getValues();
+    for (var i = 0; i < v.length; i++) lisa(v[i][0]);
+  };
+  loe(PF_CFG.lehed.tehingud, 2);
+  loe(PF_CFG.lehed.seaded, 1);
+  try { var k = JSON.parse(PropertiesService.getScriptProperties().getProperty('PF_KONTOD') || '[]'); for (var j = 0; j < k.length; j++) lisa(k[j]); } catch (e) {}
+  if (!out.length) { for (var a in PF_CFG.algseis) lisa(a); }
   return out.length ? out : [PF_CFG.nimi];
+}
+/** Konto, kuhu kirjutada: äpist tulnud nimi peab olema olemas. Kui kontosid on üks, kasutatakse seda. */
+function PF_konto_(soov) {
+  var pf = PF_portfellid_(), n = String(soov || '').trim().toLowerCase();
+  for (var i = 0; i < pf.length; i++) if (pf[i].toLowerCase() === n) return pf[i];
+  if (pf.length === 1) return pf[0];
+  throw new Error('Vali konto, mida muuta');
 }
 function PF_fxTicker_(valuuta) { return 'EUR' + valuuta + '=X'; }
 /**
@@ -730,7 +837,7 @@ function PF_kokkuvote(nimi) {
  */
 function PF_lisaTehing(t) {
   if (!t) throw new Error('Tehing puudub');
-  t.portfell = PF_portfellid_()[0];                             // üks portfell faili kohta
+  t.portfell = PF_konto_(t.portfell);
   if (PF_TYYBID.indexOf(t.tyyp) < 0) throw new Error('Tundmatu tüüp: ' + t.tyyp);
   var kaup = t.tyyp === 'Ost' || t.tyyp === 'Müük';
   var ticker = String(t.ticker || '').trim(), tasu = PF_num_(t.tasu) || 0;
