@@ -172,6 +172,15 @@
   .set .line span{flex:0 0 68px;font-size:14px}
   .set input{flex:1 1 90px;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;font-size:16px}
   .set input:focus{border-color:var(--blue);outline:0}
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line-soft);cursor:pointer}
+  .sw:first-of-type{border-top:0}
+  .sw span small{display:block;color:var(--muted);font-size:12.5px}
+  .sw input{position:absolute;opacity:0;width:1px;height:1px}
+  .sw i{flex:none;width:44px;height:26px;border-radius:999px;background:var(--line);position:relative;transition:background .15s}
+  .sw i::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#cfd6df;transition:transform .15s}
+  .sw input:checked+i{background:var(--up)} .sw input:checked+i::after{transform:translateX(18px);background:#fff}
+  .sw input:focus-visible+i{outline:2px solid var(--blue);outline-offset:2px}
+  .set input.short{flex:0 0 80px}
   .yr-s,.yr-m{}
   @media (max-width:560px){ .yr-s{display:none} }
 
@@ -395,12 +404,12 @@ function cls(n){ return has(n) ? (n>0?'up':(n<0?'down':'')) : 'muted'; }
 var RK={strong_buy:'Tugev osta',buy:'Osta',hold:'Hoia',underperform:'Alla turu',sell:'Müü'}, RKV=['#2fbf71','#7bd89f','#f5c04e','#f4a072','#f26d6a'];
 function rkOf(t){ var s=S.data&&S.data.soov&&S.data.soov[t]; return s&&RK[s.k]?s:null; }
 function rkChip(t){ var s=rkOf(t); return s?'<span class="rk rk-'+s.k+'" title="Analüütikute konsensus'+(has(s.m)?' '+nf1.format(s.m)+' / 5':'')+'">'+RK[s.k]+'</span>':''; }
-function rkUp(s,hind,val){ return s&&has(s.siht)&&has(hind)&&hind>0&&(!s.val||!val||s.val===val)?s.siht/hind-1:null; }
+function rkUp(s,hind,val){ if(s&&has(s.siht)&&has(s.hA)&&s.hA>0) return s.siht/s.hA-1; return s&&has(s.siht)&&has(hind)&&hind>0&&(!s.val||!val||s.val===val)?s.siht/hind-1:null; }
 function rkDet(t,hind,val){ var s=rkOf(t); if(!s) return '';
   var l=s.l||[0,0,0,0,0], tot=l.reduce(function(a,b){return a+b;},0), up=rkUp(s,hind,val), nim=['Tugev osta','Osta','Hoia','Müü','Tugev müü'];
   return '<div class="range" style="margin-top:14px">Analüütikud: <b class="rk rk-'+s.k+'" style="margin-left:2px">'+RK[s.k]+'</b>'+(has(s.m)?' hinnang '+nf1.format(s.m)+' / 5':'')+(s.a?', '+s.a+' analüütikut':'')+(s.vana?' (vana seis)':'')+
     (tot?'<div class="anbar">'+l.map(function(x,i){ return x?'<i style="width:'+(x/tot*100).toFixed(1)+'%;background:'+RKV[i]+'" title="'+nim[i]+' '+x+'"></i>':''; }).join('')+'</div><div class="anleg">'+l.map(function(x,i){ return x?'<span style="--c:'+RKV[i]+'">'+nim[i]+' '+x+'</span>':''; }).join('')+'</div>':'')+
-    (has(s.siht)?'<div style="margin-top:6px">Keskmine sihthind <b style="color:var(--text);font-weight:500">'+price(s.siht)+' '+esc(s.val||val||'')+'</b>'+(has(up)?' <b class="'+cls(up)+'" style="font-weight:500">('+pct(up)+')</b>':'')+'</div>':'')+'</div>'; }
+    (has(s.siht)?'<div style="margin-top:6px">Keskmine sihthind <b style="color:var(--text);font-weight:500">'+price(s.siht)+' '+esc(s.val||val||'')+'</b>'+(has(up)?' <b class="'+cls(up)+'" style="font-weight:500">('+pct(up)+')</b>':'')+(s.src?' · põhinoteering '+esc(s.src)+(has(s.hA)?' '+price(s.hA)+' '+esc(s.val||''):''):'')+'</div>':'')+'</div>'; }
 function rkMuutTekst(m){ var a=RK[m.enne]||'–', b=RK[m.nyyd]||'–', hinnang=m.enne!==m.nyyd;
   return (hinnang?'<span class="rk rk-'+esc(m.enne)+'" style="margin:0">'+a+'</span> → <span class="rk rk-'+esc(m.nyyd)+'" style="margin:0">'+b+'</span>':'')+
     (has(m.sEnne)&&has(m.sNyyd)&&Math.abs(m.sNyyd/m.sEnne-1)>=0.005?(hinnang?'<small>':'<small style="margin-top:0">')+'sihthind '+price(m.sEnne)+' → '+price(m.sNyyd)+' ('+pct(m.sNyyd/m.sEnne-1)+')</small>':''); }
@@ -862,7 +871,14 @@ function viewSeaded(d){
      '<div class="line"><input id="kNimi" placeholder="Uue konto nimi" maxlength="20" aria-label="Uue konto nimi"><button type="button" class="btn" id="kLisa">Lisa konto</button></div></div>';
   if(d.pos&&!d.koos) h+='<div class="set"><h3>Vaba raha</h3><p>Raha jääk arvutatakse tehingutest: sissemaksed, ostud, müügid, dividendid ja tasud. Praegu on arvestuses <b style="color:var(--text)">'+eur2(d.kokku.raha)+'</b>. Kui see ei klapi pangaga, sisesta tegelik jääk ja vahe läheb kirja parandusena.</p>'+
      '<div class="line"><button type="button" class="btn" data-act="Jääk">Paranda raha jääki</button><button type="button" class="btn" data-act="Sissemakse">Lisa sissemakse</button></div></div>';
-  h+='<div class="set"><h3>Analüütikute teavitused</h3><p style="margin:0">Iga päev kell 22 toob server Yahoo analüütikute konsensuse (tugev osta … müü ja sihthind) portfelli ja jälgimisnimekirja aktsiatele. Kui hinnang muutub või sihthind liigub üle 15%, tuleb e-kiri ja/või hüpikteavitus äpist ntfy ning muutus on näha avalehel. Kirja saajad, ntfy kanal ja piir on skripti alguses <code>PF_SOOV</code>. ETF-idel ja krüptol soovitusi pole.'+(d.soov&&Object.keys(d.soov).length?' Praegu on hinnang olemas '+Object.keys(d.soov).length+' aktsial.':' Soovitusi pole veel laetud: käivita Apps Scriptis üks kord <code>PF_paigaldaTriggerid</code> ja <code>PF_uuendaSoovitused</code>.')+'</p></div>';
+  var tv=d.teavitus;
+  h+='<div class="set"><h3>Analüütikute teavitused</h3><p>Iga päev kell 22 toob server Yahoo analüütikute konsensuse (tugev osta … müü ja sihthind) portfelli ja jälgimisnimekirja aktsiatele. Kui hinnang muutub või sihthind liigub üle piiri, tuleb teavitus ja muutus on näha avalehel. ETF-idel ja krüptol soovitusi pole.'+(d.soov&&Object.keys(d.soov).length?' Praegu on hinnang olemas '+Object.keys(d.soov).length+' aktsial.':' Soovitusi pole veel laetud: käivita Apps Scriptis üks kord <code>PF_paigaldaTriggerid</code> ja <code>PF_uuendaSoovitused</code>.')+'</p>'+
+    (tv?'<label class="sw"><span>E-kiri<small>skripti omaniku Gmaili (ja <code>PF_SOOV.saajad</code>)</small></span><input type="checkbox" id="tEmail"'+(tv.email?' checked':'')+'><i></i></label>'+
+        '<label class="sw"><span>Hüpikteavitus (ntfy)<small>'+(tv.kanal?'kanal …'+esc(tv.kanalLopp):'kanal on määramata')+'</small></span><input type="checkbox" id="tNtfy"'+(tv.ntfy?' checked':'')+'><i></i></label>'+
+        '<div class="line"><input id="tKanal" autocomplete="off" spellcheck="false" placeholder="'+(tv.kanal?'uus ntfy kanal (tühi = jääb endine)':'ntfy kanali nimi')+'" aria-label="ntfy kanal"></div>'+
+        '<div class="line"><span class="muted" style="font-size:13.5px;flex:1 1 150px">Teavita, kui sihthind muutub vähemalt</span><input id="tPiir" class="short" inputmode="numeric" value="'+esc(tv.piir)+'" aria-label="Sihthinna piir protsentides"><span class="muted" style="margin-left:-2px">%</span></div>'+
+        '<div class="line"><button type="button" class="btn primary" id="tSalvesta">Salvesta</button><button type="button" class="btn" id="tProov">Saada proov</button></div>'
+      :'<p style="margin:0" class="muted">Lülitid ilmuvad, kui server on uuendatud (serveri versioon 8).</p>')+'</div>';
   h+='<div class="set"><h3>Mida muudetakse Google Sheetsis</h3><p style="margin:0">Kuvanimed ja jälgimisnimekiri on lehel Hinnad (veerud Kuvanimi ja Ticker). Vale tehingu parandamiseks muuda või kustuta rida lehel Tehingud; positsioonid arvutatakse järgmisel värskendusel uuesti. Kulda, pensioni ja muud vara saab lisada vahekaardil „Tootlus ja vara“.</p></div>';
   h+='<details class="set juhend"'+(url||INSIDE?'':' open')+'><summary><h3>Esmane seadistamine: oma Google Sheet</h3></summary>'+
      '<p>Andmed on sinu enda Google Sheetis. Seda on vaja teha üks kord: samasse Sheeti saab hiljem lisada teisi kontosid (jaotis „Kontod“) ja kõik kasutavad sama linki. Seadistus võtab umbes kümme minutit ja seda on mugavam teha arvutis.</p><ol>'+
@@ -1046,6 +1062,13 @@ document.addEventListener('click',function(ev){
     if(b.id==='nvAdd'){ salvestaVara($('nvName').value.trim(),$('nvKogus')?{kogus:$('nvKogus').value,ost:$('nvOst').value}:{v:$('nvVal').value},$('nvPin')); return; }
     if(b.parentNode.id==='segVara'){ S.varaTyyp=b.dataset.v; render(); return; }
     if(b.parentNode.id==='segVaraE'){ S.varaAvaTyyp=b.dataset.v; render(); var ve=$('veKogus')||$('veVal'); if(ve) ve.focus(); return; }
+    if(b.id==='tSalvesta'||b.id==='tProov'){ var tp=($('sPin')&&$('sPin').value)||store('pf_pin');
+      if(S.demo){ toast('Need on näidisandmed – siin ei salvestata.'); return; } if(!tp){ toast('Sisesta PIN (samal lehel ülal)'); return; }
+      setBusy(true);
+      var tq={pin:tp,p:S.p,email:$('tEmail').checked,ntfy:$('tNtfy').checked,kanal:$('tKanal').value.trim(),piir:$('tPiir').value.trim()};
+      var proov=b.id==='tProov', viga=function(e){ setBusy(false); toast(/Tundmatu tegevus/.test(e.message||'')?'Server on vana. Uuenda Apps Scripti kood ja tee New version.':(e.message||String(e))); };
+      api('teavitus',tq,function(d){ if(!proov){ setBusy(false); render(d); toast(d.teade||'Salvestatud'); return; }
+        S.data=d; api('teavitusProov',{pin:tp},function(r){ setBusy(false); render(); toast(r.teade||'Saadetud'); },viga); },viga); return; }
     if(b.id==='soovNahtud'){ var mx=0; (S.data.soovMuut||[]).forEach(function(m){ if(m.ts>mx) mx=m.ts; }); store('pf_soovnahtud',String(mx)); render(); return; }
     if(b.id==='kopeeri'){ kopeeriSkript(); return; }
     if(b.id==='kLisa'){ var kn=$('kNimi').value.trim(), kp2=($('sPin')&&$('sPin').value)||store('pf_pin');

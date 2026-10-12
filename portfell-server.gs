@@ -62,6 +62,17 @@ function PF_api(tegevus, q) {
       dk.teade = 'Kustutatud';
       return dk;
     }
+    if (tegevus === 'teavitus') {
+      PF_kontrolliPin_(q.pin);
+      PF_salvestaTeavitus_(q);
+      var dt = PF_andmed_(q.p);
+      dt.teade = 'Teavituse seaded salvestatud';
+      return dt;
+    }
+    if (tegevus === 'teavitusProov') {
+      PF_kontrolliPin_(q.pin);
+      return { teade: PF_proovikiri() };
+    }
     if (tegevus === 'konto') {
       PF_kontrolliPin_(q.pin);
       var uus = PF_lisaKonto_(q.nimi);
@@ -388,7 +399,8 @@ function PF_andmed_(soov) {
       var so = sv[st];
       if (!vaja[st] || !so.voti) continue;
       soov[st] = { k: so.voti, m: n(so.keskmine, 2), a: so.arv, l: so.lugemid, siht: n(so.siht, 2), val: so.valuuta,
-                   u: so.uuendatud instanceof Date ? PF_paev_(so.uuendatud) : '', vana: so.staatus !== 'OK' };
+                   u: so.uuendatud instanceof Date ? PF_paev_(so.uuendatud) : '', vana: so.staatus !== 'OK',
+                   src: so.allikas || undefined, hA: so.allikas && so.allikaHind > 0 ? n(so.allikaHind, 4) : undefined };
     }
     var mh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Soovituste muutused');
     if (mh && mh.getLastRow() >= 2) {
@@ -421,7 +433,11 @@ function PF_andmed_(soov) {
     },
     pos: pos, ajalugu: ajalugu, turg: turg, jalgin: jalgin, tickerid: tickerid, kursid: kursid,
     varad: varad, tehingud: tehingud, vordlus: vordlus, paev: paev, paevaJoon: joon, paevaTickerid: pv,
-    soov: soov, soovMuut: soovMuut
+    soov: soov, soovMuut: soovMuut, teavitus: (function () {
+      if (typeof PF_soovSeaded_ !== 'function') return null;
+      var se = PF_soovSeaded_();
+      return { email: se.email, ntfy: se.ntfy, kanal: !!se.kanal, kanalLopp: se.kanal ? se.kanal.slice(-4) : '', piir: Math.round(se.piir * 100) };
+    })()
   };
 }
 
@@ -1141,16 +1157,33 @@ function PF_taidaVordlus() {
  * ETF-idel, krüptol, indeksitel ja valuutadel soovitusi pole – neid ei küsita.
  */
 var PF_SOOV = {
-  saajad: ['raimoliiza@gmail.com'],            // tühi = skripti omaniku e-post; lisa siia teiste aadressid: ['nimi@gmail.com']
+  saajad: [],            // tühi = skripti omaniku e-post; lisa siia teiste aadressid: ['nimi@gmail.com']
   email: true,           // false = kirja ei saadeta
-  ntfy: 'portfell-sdzVbALDamn9sPxPdvYR',              // ntfy kanali nimi (telefoni hüpikteavitus äpist ntfy). Tühi = välja lülitatud.
+  ntfy: '',              // ntfy kanali nimi (telefoni hüpikteavitus äpist ntfy). Tühi = välja lülitatud.
                          // Kasuta pikka juhuslikku nime – kes nime teab, näeb teavitusi.
   ntfyLink: '',          // valikuline: äpi aadress, mis avaneb teavitusele vajutades (nt https://kasutaja.github.io/portfell/)
   sihtMuutus: 0.15,      // sihthinna muutus, millest alates teavitada (15%)
-  tund: 22               // mis kell iga päev uuendatakse
+  tund: 22,              // mis kell iga päev uuendatakse
+  // Kõrvalnoteeringud, millel Yahoo analüütikute andmeid ei hoia: hinnang võetakse põhinoteeringult.
+  // Tõusuruum arvutatakse allika enda hinnast, nii et valuuta erinevus ei sega.
+  allikas: { 'NOV.DE': 'NVO', 'NOVO-B.CO': 'NVO' }
 };
+/** Kehtivad teavituse seaded: koodis olev PF_SOOV + äpist muudetud väärtused (Script Properties). */
+function PF_soovSeaded_() {
+  var s = { email: PF_SOOV.email !== false, ntfy: !!PF_SOOV.ntfy, kanal: String(PF_SOOV.ntfy || '').trim(), piir: PF_SOOV.sihtMuutus };
+  try {
+    var p = JSON.parse(PropertiesService.getScriptProperties().getProperty('PF_TEAVITUS') || '{}');
+    if (typeof p.email === 'boolean') s.email = p.email;
+    if (typeof p.ntfy === 'boolean') s.ntfy = p.ntfy;
+    if (p.kanal) s.kanal = String(p.kanal);
+    if (p.piir > 0) s.piir = Number(p.piir);
+  } catch (e) {}
+  s.ntfy = s.ntfy && !!s.kanal;
+  return s;
+}
+function PF_soovAllikas_(t) { return (PF_SOOV.allikas && PF_SOOV.allikas[t]) || t; }
 var PF_SOOV_PAIS = ['Ticker', 'Soovitus', 'Hinnang (1–5)', 'Analüütikuid', 'Tugev osta', 'Osta', 'Hoia', 'Müü', 'Tugev müü',
-                    'Sihthind', 'Valuuta', 'Uuendatud', 'Staatus'];
+                    'Sihthind', 'Valuuta', 'Uuendatud', 'Staatus', 'Allikas', 'Allika hind'];
 var PF_SOOVM_PAIS = ['Kuupäev', 'Ticker', 'Kuvanimi', 'Enne', 'Nüüd', 'Hinnang enne', 'Hinnang nüüd', 'Sihthind enne', 'Sihthind nüüd', 'Kellel'];
 var PF_SOOV_TASE = { strong_buy: 1, buy: 2, hold: 3, underperform: 4, sell: 5 };
 var PF_SOOV_NIMI = { strong_buy: 'Tugev osta', buy: 'Osta', hold: 'Hoia', underperform: 'Alla turu', sell: 'Müü' };
@@ -1206,7 +1239,7 @@ function PF_parsiSoovitus_(tekst) {
   var lugemid = t0 ? [t0.strongBuy || 0, t0.buy || 0, t0.hold || 0, t0.sell || 0, t0.strongSell || 0] : [0, 0, 0, 0, 0];
   if (!(arv > 0)) arv = lugemid.reduce(function (a, b) { return a + b; }, 0);
   return { voti: arv > 0 ? PF_soovVoti_(f.recommendationKey, keskmine) : '', keskmine: keskmine, arv: arv || 0,
-           lugemid: lugemid, siht: raw(f.targetMeanPrice), valuuta: String(f.financialCurrency || '') };
+           lugemid: lugemid, siht: raw(f.targetMeanPrice), hind: raw(f.currentPrice), valuuta: String(f.financialCurrency || '') };
 }
 
 /** Toob soovitused. Tagastab {ticker: {ok, ...} | {ok:false, viga}} – ei viska viga, v.a kui crumb'i ei saa. */
@@ -1251,7 +1284,8 @@ function PF_loeSoovitused_() {
     var voti = String(v[i][1]).trim(); voti = PF_SOOV_TASE[voti] ? voti : (nimiVoti[voti.toLowerCase()] || '');
     out[t] = { voti: voti, keskmine: PF_num_(v[i][2]), arv: PF_num_(v[i][3]) || 0,
                lugemid: [4, 5, 6, 7, 8].map(function (c) { return PF_num_(v[i][c]) || 0; }),
-               siht: PF_num_(v[i][9]), valuuta: String(v[i][10]), uuendatud: v[i][11], staatus: String(v[i][12]) };
+               siht: PF_num_(v[i][9]), valuuta: String(v[i][10]), uuendatud: v[i][11], staatus: String(v[i][12]),
+               allikas: String(v[i][13] || '').trim(), allikaHind: PF_num_(v[i][14]) };
   }
   return out;
 }
@@ -1275,22 +1309,27 @@ function PF_uuendaSoovitused() {
   var tickerid = [];
   for (var t in omanik) if (PF_soovKolbab_(t, hinnad[t])) tickerid.push(t);
   if (!tickerid.length) return 'Soovitusi pole kellegi jaoks küsida';
-  var vana = PF_loeSoovitused_(), uus = PF_tooSoovitused_(tickerid), nyyd = new Date(), read = [], muutused = [], vigu = 0;
+  var paritavad = [], nahtud = {};
+  for (var pa = 0; pa < tickerid.length; pa++) { var al = PF_soovAllikas_(tickerid[pa]); if (!nahtud[al]) { nahtud[al] = true; paritavad.push(al); } }
+  var seaded = PF_soovSeaded_(), toored = PF_tooSoovitused_(paritavad), uus = {};
+  for (var pb = 0; pb < tickerid.length; pb++) uus[tickerid[pb]] = toored[PF_soovAllikas_(tickerid[pb])];
+  var vana = PF_loeSoovitused_(), nyyd = new Date(), read = [], muutused = [], vigu = 0;
   for (var i = 0; i < tickerid.length; i++) {
     var tk = tickerid[i], u = uus[tk], v = vana[tk];
     if (!u || !u.ok) {
       vigu++;
       if (v) read.push([tk, v.voti, PF_tyhiVoiArv_(v.keskmine), v.arv, v.lugemid[0], v.lugemid[1], v.lugemid[2], v.lugemid[3], v.lugemid[4],
-                        PF_tyhiVoiArv_(v.siht), v.valuuta, v.uuendatud, 'VANA – ' + (u ? u.viga : 'puudub')]);
-      else read.push([tk, '', '', 0, 0, 0, 0, 0, 0, '', '', nyyd, u ? u.viga : 'puudub']);
+                        PF_tyhiVoiArv_(v.siht), v.valuuta, v.uuendatud, 'VANA – ' + (u ? u.viga : 'puudub'), v.allikas || '', PF_tyhiVoiArv_(v.allikaHind)]);
+      else read.push([tk, '', '', 0, 0, 0, 0, 0, 0, '', '', nyyd, u ? u.viga : 'puudub', PF_soovAllikas_(tk) !== tk ? PF_soovAllikas_(tk) : '', '']);
       continue;
     }
     read.push([tk, u.voti, PF_tyhiVoiArv_(u.keskmine === null ? NaN : PF_umarda_(u.keskmine, 2)), u.arv,
                u.lugemid[0], u.lugemid[1], u.lugemid[2], u.lugemid[3], u.lugemid[4],
-               PF_tyhiVoiArv_(u.siht === null ? NaN : PF_umarda_(u.siht, 2)), u.valuuta || (hinnad[tk] || {}).valuuta || '', nyyd, 'OK']);
+               PF_tyhiVoiArv_(u.siht === null ? NaN : PF_umarda_(u.siht, 2)), u.valuuta || (hinnad[tk] || {}).valuuta || '', nyyd, 'OK',
+               PF_soovAllikas_(tk) !== tk ? PF_soovAllikas_(tk) : '', PF_tyhiVoiArv_(u.hind === null || u.hind === undefined ? NaN : PF_umarda_(u.hind, 4))]);
     if (!v || !v.voti && !(v.siht > 0)) continue;                       // esimene kord: võrrelda pole millega
     var hinnangMuutus = v.voti && u.voti && v.voti !== u.voti;
-    var sihtMuutus = v.siht > 0 && u.siht > 0 && Math.abs(u.siht / v.siht - 1) >= PF_SOOV.sihtMuutus;
+    var sihtMuutus = v.siht > 0 && u.siht > 0 && Math.abs(u.siht / v.siht - 1) >= seaded.piir;
     if (hinnangMuutus || sihtMuutus) {
       muutused.push([nyyd, tk, (hinnad[tk] || {}).kuva || PF_kuvanimi_(tk), v.voti || '', u.voti || '',
                      PF_tyhiVoiArv_(v.keskmine), PF_tyhiVoiArv_(u.keskmine === null ? NaN : PF_umarda_(u.keskmine, 2)),
@@ -1311,8 +1350,8 @@ function PF_uuendaSoovitused() {
     if (!mh) { mh = ss.insertSheet('Soovituste muutused'); mh.setFrozenRows(1); }
     mh.getRange(1, 1, 1, PF_SOOVM_PAIS.length).setValues([PF_SOOVM_PAIS]).setFontWeight('bold');
     mh.getRange(mh.getLastRow() + 1, 1, muutused.length, PF_SOOVM_PAIS.length).setValues(muutused);
-    if (PF_SOOV.email) { try { PF_saadaSoovKiri_(muutused); } catch (me) { Logger.log('Kiri jäi saatmata: ' + me.message); } }
-    if (PF_SOOV.ntfy) { try { PF_saadaNtfy_(muutused); } catch (ne) { Logger.log('ntfy teavitus jäi saatmata: ' + ne.message); } }
+    if (seaded.email) { try { PF_saadaSoovKiri_(muutused); } catch (me) { Logger.log('Kiri jäi saatmata: ' + me.message); } }
+    if (seaded.ntfy) { try { PF_saadaNtfy_(muutused, seaded.kanal); } catch (ne) { Logger.log('ntfy teavitus jäi saatmata: ' + ne.message); } }
   }
   var logi = 'Soovitused: ' + (tickerid.length - vigu) + '/' + tickerid.length + ' uuendatud, muutusi ' + muutused.length;
   Logger.log(logi);
@@ -1320,8 +1359,8 @@ function PF_uuendaSoovitused() {
 }
 
 /** Hüpikteavitus telefoni ntfy kaudu (https://ntfy.sh). JSON-kujul, et täpitähed jõuaksid kohale. */
-function PF_saadaNtfy_(muutused) {
-  var kanal = String(PF_SOOV.ntfy || '').trim();
+function PF_saadaNtfy_(muutused, kanal) {
+  kanal = String(kanal || PF_soovSeaded_().kanal || '').trim();
   if (!/^[A-Za-z0-9_\-]{8,64}$/.test(kanal)) throw new Error('ntfy kanali nimi peab olema 8–64 märki (tähed, numbrid, - ja _)');
   var nimi = function (k) { return PF_SOOV_NIMI[k] || '–'; };
   var arv = function (x) { return typeof x === 'number' ? String(PF_umarda_(x, 2)).replace('.', ',') : '–'; };
@@ -1446,11 +1485,28 @@ function PF_varskendaKohe() { return PF_varskendaHinnad(true); }
 /** Saadab näidiskirja, et näha, kas teavitus jõuab telefoni. Annab ühtlasi kirja saatmise loa. */
 function PF_proovikiri() {
   var m = [[new Date(), 'TEST', 'Proov', 'buy', 'strong_buy', 2.1, 1.4, 100, 120, 'proovikiri']], logi = [];
-  if (PF_SOOV.email) { PF_saadaSoovKiri_(m); logi.push('e-kiri saadetud'); }
-  if (PF_SOOV.ntfy) { PF_saadaNtfy_(m); logi.push('ntfy teavitus saadetud kanalisse ' + PF_SOOV.ntfy); }
-  else logi.push('ntfy on välja lülitatud (PF_SOOV.ntfy tühi)');
+  var se = PF_soovSeaded_();
+  if (se.email) { PF_saadaSoovKiri_(m); logi.push('e-kiri saadetud'); } else logi.push('e-kiri on välja lülitatud');
+  if (se.ntfy) { PF_saadaNtfy_(m, se.kanal); logi.push('ntfy teavitus saadetud'); }
+  else logi.push(se.kanal ? 'ntfy on välja lülitatud' : 'ntfy kanal on määramata');
   Logger.log(logi.join(', '));
   return logi.join(', ');
+}
+
+/** Äpist: teavituse lülitid. kanal: uus ntfy kanal ('' = jäta endine, '-' = kustuta). piir: protsentides. */
+function PF_salvestaTeavitus_(q) {
+  var prop = PropertiesService.getScriptProperties(), p = {};
+  try { p = JSON.parse(prop.getProperty('PF_TEAVITUS') || '{}'); } catch (e) {}
+  if (typeof q.email === 'boolean') p.email = q.email;
+  if (typeof q.ntfy === 'boolean') p.ntfy = q.ntfy;
+  var k = String(q.kanal || '').trim();
+  if (k === '-') { p.kanal = ''; p.ntfy = false; }
+  else if (k) { if (!/^[A-Za-z0-9_\-]{8,64}$/.test(k)) throw new Error('ntfy kanali nimi: 8–64 märki, tähed, numbrid, - ja _'); p.kanal = k; }
+  if (q.piir !== undefined && q.piir !== '') { var pr = PF_num_(q.piir); if (!(pr >= 5 && pr <= 50)) throw new Error('Sihthinna piir peab olema 5–50%'); p.piir = pr / 100; }
+  prop.setProperty('PF_TEAVITUS', JSON.stringify(p));
+  var se = PF_soovSeaded_();
+  if (p.ntfy && !se.kanal) throw new Error('ntfy jaoks sisesta kanali nimi');
+  return se;
 }
 
 function onOpen() {
