@@ -350,8 +350,11 @@ function apiUrl(){ return (store('pf_api')||API_URL||'').trim(); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
 // ---------- server ----------
-function api(tegevus, q, ok, fail){
+function api(tegevus, q, ok, fail, katse){
   var done = function(r){ if (r && r.viga) fail(new Error(r.viga)); else ok(r); };
+  // Google annab koormuse all vahel vealehe andmete asemel: lugemist proovitakse 3 s pärast üks kord uuesti.
+  var lugemine = tegevus==='andmed'||tegevus==='varskenda';
+  var kordus = function(e){ if(lugemine&&!katse){ setTimeout(function(){ api(tegevus,q,ok,fail,1); },3000); return; } fail(e); };
   if (INSIDE){
     google.script.run.withSuccessHandler(done).withFailureHandler(fail).PF_api(tegevus, JSON.stringify(q||{}));
     return;
@@ -362,11 +365,13 @@ function api(tegevus, q, ok, fail){
     // Varutee: JSONP (script-silt). Kasutatakse ainult siis, kui fetch ei õnnestu.
     var jsonp=function(esimeneViga){
       var cb='PF_cb_'+(++CB_N), tag=document.createElement('script');
-      var timer=setTimeout(function(){ clean(); fail(new Error('Server ei vastanud. Kontrolli linki vahekaardil Seaded ja et web-app on avatud kõigile, kellel on link.')); },40000);
+      var timer=setTimeout(function(){ clean(); kordus(new Error('Server ei vastanud. Kontrolli linki vahekaardil Seaded ja et web-app on avatud kõigile, kellel on link.')); },40000);
       function clean(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){} if(tag.parentNode) tag.parentNode.removeChild(tag); }
       window[cb]=function(r){ clean(); done(r); };
       tag.src=base+'&cb='+cb;
-      tag.onerror=function(){ clean(); var e=new Error('Server ei andnud andmeid.'); e.yhendus=true; e.detail=esimeneViga; fail(e); };
+      var viga=function(){ clean(); var e=new Error('Server ei andnud andmeid.'); e.yhendus=true; e.detail=esimeneViga; kordus(e); };
+      tag.onerror=viga;
+      tag.onload=function(){ setTimeout(function(){ if(window[cb]) viga(); },400); };   // laeti, aga see polnud andmed (nt Google'i vealeht)
       document.body.appendChild(tag);
     };
     // Põhitee: fetch ilma küpsisteta. Nii ei sega telefonis sisse logitud Google'i kontod (sama olukord mis inkognito aknas).
@@ -877,7 +882,7 @@ function viewSeaded(d){
         '<label class="sw"><span>Hüpikteavitus (ntfy)<small>'+(tv.kanal?'kanal …'+esc(tv.kanalLopp):'kanal on määramata')+'</small></span><input type="checkbox" id="tNtfy"'+(tv.ntfy?' checked':'')+'><i></i></label>'+
         '<div class="line"><input id="tKanal" autocomplete="off" spellcheck="false" placeholder="'+(tv.kanal?'uus ntfy kanal (tühi = jääb endine)':'ntfy kanali nimi')+'" aria-label="ntfy kanal"></div>'+
         '<div class="line"><span class="muted" style="font-size:13.5px;flex:1 1 150px">Teavita, kui sihthind muutub vähemalt</span><input id="tPiir" class="short" inputmode="numeric" value="'+esc(tv.piir)+'" aria-label="Sihthinna piir protsentides"><span class="muted" style="margin-left:-2px">%</span></div>'+
-        '<div class="line"><button type="button" class="btn primary" id="tSalvesta">Salvesta</button><button type="button" class="btn" id="tProov">Saada proov</button></div>'
+        '<div class="line"><button type="button" class="btn primary" id="tSalvesta">Salvesta</button><button type="button" class="btn" id="tProov">Saada proov</button></div><p id="tTulem" style="margin:10px 0 0;font-size:13.5px'+(S.tTulem&&/EBAÕNNESTUS|määramata|välja lülitatud/.test(S.tTulem)?';color:#f3d48d':'')+'"'+(S.tTulem?'':' hidden')+'>'+esc(S.tTulem||'')+'</p>'
       :'<p style="margin:0" class="muted">Lülitid ilmuvad, kui server on uuendatud (serveri versioon 8).</p>')+'</div>';
   h+='<div class="set"><h3>Mida muudetakse Google Sheetsis</h3><p style="margin:0">Kuvanimed ja jälgimisnimekiri on lehel Hinnad (veerud Kuvanimi ja Ticker). Vale tehingu parandamiseks muuda või kustuta rida lehel Tehingud; positsioonid arvutatakse järgmisel värskendusel uuesti. Kulda, pensioni ja muud vara saab lisada vahekaardil „Tootlus ja vara“.</p></div>';
   h+='<details class="set juhend"'+(url||INSIDE?'':' open')+'><summary><h3>Esmane seadistamine: oma Google Sheet</h3></summary>'+
@@ -901,7 +906,7 @@ function render(d){
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); }
 }
 function fail(e){
-  if(S.data){ toast(e.message||String(e)); return; }
+  if(S.data){ toast((e.message||String(e))+(e&&e.detail?' ('+e.detail+')':'')+(e&&e.yhendus?' Proovi minuti pärast uuesti.':'')); return; }
   $('foot').hidden=true;
   [].forEach.call($('nav').children,function(b){ b.setAttribute('aria-pressed',b.dataset.view===S.view); });
   if(e&&e.yhendus&&S.view!=='seaded'){
@@ -1065,10 +1070,11 @@ document.addEventListener('click',function(ev){
     if(b.id==='tSalvesta'||b.id==='tProov'){ var tp=($('sPin')&&$('sPin').value)||store('pf_pin');
       if(S.demo){ toast('Need on näidisandmed – siin ei salvestata.'); return; } if(!tp){ toast('Sisesta PIN (samal lehel ülal)'); return; }
       setBusy(true);
+      if($('tKanal').value.trim()) $('tNtfy').checked=true;           // kanali sisestamine lülitab ntfy sisse
       var tq={pin:tp,p:S.p,email:$('tEmail').checked,ntfy:$('tNtfy').checked,kanal:$('tKanal').value.trim(),piir:$('tPiir').value.trim()};
       var proov=b.id==='tProov', viga=function(e){ setBusy(false); toast(/Tundmatu tegevus/.test(e.message||'')?'Server on vana. Uuenda Apps Scripti kood ja tee New version.':(e.message||String(e))); };
       api('teavitus',tq,function(d){ if(!proov){ setBusy(false); render(d); toast(d.teade||'Salvestatud'); return; }
-        S.data=d; api('teavitusProov',{pin:tp},function(r){ setBusy(false); render(); toast(r.teade||'Saadetud'); },viga); },viga); return; }
+        S.data=d; api('teavitusProov',{pin:tp},function(r){ setBusy(false); S.tTulem='Proov: '+(r.teade||'saadetud'); render(); },viga); },viga); return; }
     if(b.id==='soovNahtud'){ var mx=0; (S.data.soovMuut||[]).forEach(function(m){ if(m.ts>mx) mx=m.ts; }); store('pf_soovnahtud',String(mx)); render(); return; }
     if(b.id==='kopeeri'){ kopeeriSkript(); return; }
     if(b.id==='kLisa'){ var kn=$('kNimi').value.trim(), kp2=($('sPin')&&$('sPin').value)||store('pf_pin');
@@ -1095,7 +1101,7 @@ document.addEventListener('click',function(ev){
   if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
 });
 document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches&&ev.target.matches('tr.row,[data-vara-ava],[data-sektor]')){ if(ev.target.matches('[data-sektor]')){ ev.preventDefault(); S.varaValik=S.varaValik===ev.target.getAttribute('data-sektor')?null:ev.target.getAttribute('data-sektor'); render(); return; } ev.preventDefault(); ev.target.click(); } });
-document.addEventListener('input',function(ev){ var id=ev.target.id; if(id==='pmMaar'||id==='pmSiht'){ store(id==='pmMaar'?'pf_maar':'pf_siht',ev.target.value.trim()||null); var el=$('passiivRead'); if(el&&S.data) el.innerHTML=passiivRead(S.data); } });
+document.addEventListener('input',function(ev){ var id=ev.target.id; if(id==='tKanal'&&ev.target.value.trim()&&$('tNtfy')) $('tNtfy').checked=true; if(id==='pmMaar'||id==='pmSiht'){ store(id==='pmMaar'?'pf_maar':'pf_siht',ev.target.value.trim()||null); var el=$('passiivRead'); if(el&&S.data) el.innerHTML=passiivRead(S.data); } });
 $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.target.id!=='iMarkus') syncForm(ev.target.id==='iTicker'); });
 $('frm').addEventListener('submit',submitForm);
 $('konto').addEventListener('change',function(){ S.open=null; S.varaAva=null; S.varaValik=null; store('pf_p',this.value); load(this.value); });

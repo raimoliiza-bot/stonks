@@ -1376,8 +1376,21 @@ function PF_saadaNtfy_(muutused, kanal) {
   var keha = { topic: kanal, title: 'Analüütikud: ' + muutused.map(function (m) { return m[2]; }).slice(0, 4).join(', ') + (muutused.length > 4 ? ' +' + (muutused.length - 4) : ''),
                message: read.join('\n'), priority: 4, tags: [alla > ules ? 'chart_with_downwards_trend' : 'chart_with_upwards_trend'] };
   if (/^https:\/\//.test(String(PF_SOOV.ntfyLink || ''))) keha.click = PF_SOOV.ntfyLink;
-  var r = UrlFetchApp.fetch('https://ntfy.sh/', { method: 'post', contentType: 'application/json', payload: JSON.stringify(keha), muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) throw new Error('ntfy HTTP ' + r.getResponseCode());
+  var vastus = function (r) { return 'HTTP ' + r.getResponseCode() + ' ' + String(r.getContentText() || '').replace(/\s+/g, ' ').slice(0, 120); };
+  var r = null, viga = '';
+  try { r = UrlFetchApp.fetch('https://ntfy.sh/', { method: 'post', contentType: 'application/json', payload: JSON.stringify(keha), muteHttpExceptions: true }); }
+  catch (e) { viga = String(e.message || e).slice(0, 120); }
+  if (r && r.getResponseCode() === 200) return 'OK';
+  if (r) viga = vastus(r);
+  // varutee: tavaline postitus kanali aadressile (pealkiri päises UTF-8 kodeeringus)
+  var b64 = function (t) { return '=?UTF-8?B?' + Utilities.base64Encode(t, Utilities.Charset.UTF_8) + '?='; };
+  var paised = { Title: b64(keha.title), Priority: String(keha.priority), Tags: keha.tags.join(',') };
+  if (keha.click) paised.Click = keha.click;
+  var r2 = null;
+  try { r2 = UrlFetchApp.fetch('https://ntfy.sh/' + kanal, { method: 'post', contentType: 'text/plain; charset=utf-8', payload: keha.message, headers: paised, muteHttpExceptions: true }); }
+  catch (e2) { throw new Error('ntfy: ' + viga + ' / ' + String(e2.message || e2).slice(0, 120)); }
+  if (r2.getResponseCode() === 200) return 'OK (varutee)';
+  throw new Error('ntfy: ' + viga + ' / ' + vastus(r2));
 }
 
 function PF_saadaSoovKiri_(muutused) {
@@ -1486,8 +1499,9 @@ function PF_varskendaKohe() { return PF_varskendaHinnad(true); }
 function PF_proovikiri() {
   var m = [[new Date(), 'TEST', 'Proov', 'buy', 'strong_buy', 2.1, 1.4, 100, 120, 'proovikiri']], logi = [];
   var se = PF_soovSeaded_();
-  if (se.email) { PF_saadaSoovKiri_(m); logi.push('e-kiri saadetud'); } else logi.push('e-kiri on välja lülitatud');
-  if (se.ntfy) { PF_saadaNtfy_(m, se.kanal); logi.push('ntfy teavitus saadetud'); }
+  if (se.email) { try { PF_saadaSoovKiri_(m); logi.push('e-kiri saadetud'); } catch (e) { logi.push('e-kiri EBAÕNNESTUS: ' + e.message); } }
+  else logi.push('e-kiri on välja lülitatud');
+  if (se.ntfy) { try { logi.push('ntfy saadetud kanalisse …' + se.kanal.slice(-4) + ' (' + PF_saadaNtfy_(m, se.kanal) + ')'); } catch (e2) { logi.push('ntfy EBAÕNNESTUS: ' + e2.message); } }
   else logi.push(se.kanal ? 'ntfy on välja lülitatud' : 'ntfy kanal on määramata');
   Logger.log(logi.join(', '));
   return logi.join(', ');
