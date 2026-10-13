@@ -696,10 +696,12 @@ function jaotusRead(d,summa){
     return '<li><span>'+esc(g)+(top?' <small class="muted">nt '+esc(top.kuva)+(has(top.hind)&&top.hind>0&&top.val==='EUR'?' ≈ '+Math.floor(jaot[g]/top.hind)+' tk':'')+'</small>':'')+'</span><b style="font-weight:500">'+eur(jaot[g])+'</b></li>'; }).join('');
 }
 // ---------- eesmärk: liitintressi kalkulaator ----------
-var EE_VAIK={eeAlgus:'',eeKuus:'1500',eeTootlus:'7',eeSiht:'500000',eeVanus:'43',eeSihtVanus:'55',eeDiv:'4',eeInfl:'2,5',eeKasv:'0'};
-function eeV(id){ var v=store('pf_'+id); return v!==''&&v!=null?v:EE_VAIK[id]; }
+var EE_VAIK={eeAlgus:'',eeKuus:'1500',eeTootlus:'7',eeSiht:'500000',eeVanus:'',eeSihtVanus:'',eeAastaid:'12',eeDiv:'4',eeInfl:'2,5',eeKasv:'0'};
+// iga konto (ja koondvaade) hoiab oma eeldusi
+function eeKey(id){ return 'pf_'+id+'_'+(S.p||''); }
+function eeV(id){ var v=store(eeKey(id)); return v!==''&&v!=null?v:EE_VAIK[id]; }
 function eeN(id){ return num(eeV(id)); }
-function eeAlgus(d){ var v=num(store('pf_eeAlgus')); return v>=0?v:(d.kokku.vaartus||0); }
+function eeAlgus(d){ var v=num(store(eeKey('eeAlgus'))); return v>=0?v:(d.kokku.vaartus||0); }
 /** Kuu kaupa: sissemakse kuu lõpus, tootlus liitub igakuiselt, sissemakse kasvab igal aastal. */
 function eeSim(P,kuus,r,g,kuud){
   var rm=Math.pow(1+r,1/12)-1, v=P, sisse=P, m=kuus, out=[{k:0,v:v,s:sisse}];
@@ -725,13 +727,15 @@ function eeChips(){
   box.innerHTML=o.map(function(x){ return '<button type="button" data-eediv="'+String(x[0]).replace('.',',')+'" aria-pressed="'+(Math.abs(v-x[0])<0.05)+'">'+x[1]+'</button>'; }).join('');
 }
 function viewEesmark(d){
-  var inp=function(id,lbl,ph){ return '<label>'+lbl+'<input id="'+id+'" inputmode="decimal" value="'+esc(store('pf_'+id)||'')+'" placeholder="'+esc(ph!==undefined?ph:EE_VAIK[id])+'"></label>'; };
+  var inp=function(id,lbl,ph){ return '<label>'+lbl+'<input id="'+id+'" inputmode="decimal" value="'+esc(store(eeKey(id))||'')+'" placeholder="'+esc(ph!==undefined?ph:EE_VAIK[id])+'"></label>'; };
   var h='<div id="eeTulem"></div>';
   h+=fold('eeSisend','Eeldused','',
+    (d.koos?'<p class="cmp-note" style="margin:0 0 10px">Koondvaade: kõigi kontode portfell kokku. Vanuse asemel on ajahorisont aastates; igal kontol on oma eeldused.</p>':'')+
     '<div class="eeset">'+inp('eeAlgus','Algsumma, €',nf0.format(Math.round(d.kokku.vaartus||0)))+inp('eeKuus','Sissemakse kuus, €')+
-      inp('eeTootlus','Aastane tootlus, %')+inp('eeSiht','Eesmärk, €')+inp('eeVanus','Vanus praegu')+inp('eeSihtVanus','Sihtvanus')+
-      inp('eeInfl','Inflatsioon, %')+inp('eeKasv','Sissemakse kasv aastas, %')+'</div>'+
-    '<div class="eeset" style="grid-template-columns:1fr">'+inp('eeDiv','Dividend / väljavõtt aastas, %')+'</div>'+
+      inp('eeTootlus','Aastane tootlus, %')+inp('eeSiht','Eesmärk, €')+
+      (d.koos?inp('eeAastaid','Ajahorisont, aastat')+inp('eeInfl','Inflatsioon, %')+inp('eeKasv','Sissemakse kasv aastas, %')+inp('eeDiv','Dividend / väljavõtt, %')+'</div>'
+             :inp('eeVanus','Vanus praegu','sisesta')+inp('eeSihtVanus','Sihtvanus','nt 55')+inp('eeInfl','Inflatsioon, %')+inp('eeKasv','Sissemakse kasv aastas, %')+'</div>'+
+              '<div class="eeset" style="grid-template-columns:1fr">'+inp('eeDiv','Dividend / väljavõtt aastas, %')+'</div>')+
     '<div class="chips" id="eeChips"></div>'+
     '<p class="cmp-note">Tühjad väljad kasutavad halli vaikeväärtust (algsumma = praegune portfell). Tootlus on enne inflatsiooni: laia maailmaindeksi pikaajaline keskmine on olnud umbes 7–8% aastas, aga see pole garantii. Dividend/väljavõtt: VWRL maksab ≈1,8%, dividendifondid 4–6%; 4% reegel tähendab, et võtad aastas välja 4% portfellist (dividendid + vajadusel müük).</p>',
     'tootlus '+esc(eeV('eeTootlus'))+'%, '+eur(eeN('eeKuus'))+' kuus');
@@ -740,9 +744,12 @@ function viewEesmark(d){
   return h;
 }
 function eeArvud(){
-  var d=S.data, P=eeAlgus(d), kuus=Math.max(0,eeN('eeKuus')||0), r=(eeN('eeTootlus')||0)/100, siht=eeN('eeSiht')||0, vanus=eeN('eeVanus')||0, sv=eeN('eeSihtVanus')||0;
-  var div=(eeN('eeDiv')||0)/100, infl=(eeN('eeInfl')||0)/100, g=(eeN('eeKasv')||0)/100;
-  return {P:P,kuus:kuus,r:r,siht:siht,vanus:vanus,sv:sv,div:div,infl:infl,g:g};
+  var d=S.data, koos=!!d.koos, P=eeAlgus(d), kuus=Math.max(0,eeN('eeKuus')||0), r=(eeN('eeTootlus')||0)/100, siht=eeN('eeSiht')||0;
+  var vanus=koos?0:(eeN('eeVanus')||0), sv=koos?(eeN('eeAastaid')||0):(eeN('eeSihtVanus')||0);
+  var div=(eeN('eeDiv')||0)/100, infl=(eeN('eeInfl')||0)/100, g=(eeN('eeKasv')||0)/100, y0=new Date().getFullYear();
+  // ok: kas ajatelg on teada (vanus konto vaates, koondvaates alati aastad); lbl: punkt ajateljel (vanus või aastad praegusest)
+  return {P:P,kuus:kuus,r:r,siht:siht,vanus:vanus,sv:sv,div:div,infl:infl,g:g,koos:koos,ok:koos||vanus>0,
+          lbl:function(x){ return koos?'+'+nf0.format(x)+' a':nf0.format(x); }, aasta:function(x){ return y0+Math.round(x-vanus); }};
 }
 function eeUuenda(){
   var A=eeArvud(), box=$('eeTulem'); if(!box) return;
@@ -750,7 +757,7 @@ function eeUuenda(){
   var real=function(v,a){ return v/Math.pow(1+A.infl,a); };
   var h='<div class="ee-hero">';
   if(A.siht>0&&k!==null){
-    var vanusSiis=A.vanus>0?A.vanus+aastaid:null, aasta=new Date().getFullYear()+Math.ceil(aastaid), s1=eeSim(A.P,A.kuus,A.r,A.g,Math.max(12,Math.ceil(k/12)*12));
+    var vanusSiis=A.vanus>0&&!A.koos?A.vanus+aastaid:null, aasta=new Date().getFullYear()+Math.ceil(aastaid), s1=eeSim(A.P,A.kuus,A.r,A.g,Math.max(12,Math.ceil(k/12)*12));
     var sisse=A.P+(function(){ var t=0,m=A.kuus; for(var i=1;i<=k;i++){ t+=m; if(i%12===0) m*=1+A.g; } return t; })();
     var tuluK=A.siht*A.div/12;
     h+='<div class="muted" style="font-size:13px">'+eur(A.siht)+' eesmärgini jõuad</div><div class="big">'+(k===0?'juba praegu':aastadKuud(k)+' pärast')+'</div>'+
@@ -761,9 +768,9 @@ function eeUuenda(){
   } else if(A.siht>0){
     h+='<div class="big" style="font-size:24px">Eesmärgini ei jõua 60 aastaga</div><p>Suurenda sissemakset või tootlust.</p>';
   }
-  if(A.sv>A.vanus&&A.vanus>0&&A.siht>0){
+  if(A.sv>A.vanus&&A.ok&&A.siht>0){
     var kuud=Math.round((A.sv-A.vanus)*12), vaja=eeVajaKuus(A.P,A.r,A.g,A.siht,kuud), sim=eeSim(A.P,A.kuus,A.r,A.g,kuud), vSv=sim[sim.length-1].v;
-    h+='<p style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)">'+nf0.format(A.sv)+'-aastaseks on praeguse plaaniga portfell <b>'+eur(vSv)+'</b> ('+eur(vSv*A.div/12)+' kuus). '+
+    h+='<p style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)">'+(A.koos?nf0.format(A.sv)+' aasta pärast ('+A.aasta(A.sv)+')':nf0.format(A.sv)+'-aastaseks')+' on praeguse plaaniga portfell <b>'+eur(vSv)+'</b> ('+eur(vSv*A.div/12)+' kuus). '+
        (vSv>=A.siht?'Eesmärk täidetud ka väiksema maksega: piisaks <b>'+eur(vaja)+'</b> kuus.':'Et selleks ajaks jõuda '+eur(A.siht)+'-ni, oleks vaja <b>'+eur(vaja)+'</b> kuus.')+'</p>';
   }
   box.innerHTML=h+'</div>';
@@ -771,19 +778,19 @@ function eeUuenda(){
 }
 function eeTabel(){
   var A=eeArvud(), box=$('eeTab'); if(!box) return;
-  if(!(A.vanus>0)){ box.innerHTML='<p class="empty" style="text-align:left;padding:4px 0">Sisesta vanus, et näha tabelit vanuse kaupa.</p>'; return; }
-  var vanused=[], v0=Math.ceil((A.vanus+1)/5)*5; for(var a=v0;a<=Math.max(70,A.sv);a+=5) vanused.push(a); if(A.sv>A.vanus&&vanused.indexOf(A.sv)<0) vanused.push(A.sv); vanused.sort(function(x,y){return x-y;});
+  if(!A.ok){ box.innerHTML='<p class="empty" style="text-align:left;padding:4px 0">Sisesta vanus, et näha tabelit vanuse kaupa.</p>'; return; }
+  var vanused=[], v0=A.koos?5:Math.ceil((A.vanus+1)/5)*5; for(var a=v0;a<=(A.koos?Math.max(25,A.sv):Math.max(70,A.sv));a+=5) vanused.push(a); if(A.sv>A.vanus&&vanused.indexOf(A.sv)<0) vanused.push(A.sv); vanused.sort(function(x,y){return x-y;});
   var maxK=Math.round((vanused[vanused.length-1]-A.vanus)*12), sim=eeSim(A.P,A.kuus,A.r,A.g,maxK);
   var at=function(age){ var k=Math.round((age-A.vanus)*12), i=Math.min(sim.length-1,Math.max(0,Math.round(k/12))); return sim[i]; };
-  box.innerHTML='<table class="ee-tab"><thead><tr><th style="text-align:left">Vanus</th><th>Portfell</th><th>Tulu kuus</th><th class="yr-s">Tänases rahas</th></tr></thead><tbody>'+
+  box.innerHTML='<table class="ee-tab"><thead><tr><th style="text-align:left">'+(A.koos?'Aja pärast':'Vanus')+'</th><th>Portfell</th><th>Tulu kuus</th><th class="yr-s">Tänases rahas</th></tr></thead><tbody>'+
     vanused.map(function(age){ var p=at(age), a=age-A.vanus, tulu=p.v*A.div/12;
-      return '<tr'+(age===A.sv?' style="background:#f5c04e10"':'')+'><td class="nm" style="text-align:left"><b>'+age+'</b><small>'+(new Date().getFullYear()+Math.round(a))+'</small></td><td>'+eur(p.v)+(A.siht>0&&p.v>=A.siht?' ✓':'')+'<small>sisse '+eur(p.s)+'</small></td><td>'+eur(tulu)+'</td><td class="yr-s">'+eur(tulu/Math.pow(1+A.infl,a))+'</td></tr>'; }).join('')+'</tbody></table>'+
+      return '<tr'+(age===A.sv?' style="background:#f5c04e10"':'')+'><td class="nm" style="text-align:left"><b>'+A.lbl(age)+'</b><small>'+A.aasta(age)+'</small></td><td>'+eur(p.v)+(A.siht>0&&p.v>=A.siht?' ✓':'')+'<small>sisse '+eur(p.s)+'</small></td><td>'+eur(tulu)+'</td><td class="yr-s">'+eur(tulu/Math.pow(1+A.infl,a))+'</td></tr>'; }).join('')+'</tbody></table>'+
     '<p class="cmp-note">Tulu kuus = portfell × '+nf1.format(A.div*100)+'% / 12, enne makse. „Tänases rahas“ arvestab '+nf1.format(A.infl*100)+'% inflatsiooni.</p>';
 }
 function eeGraaf(){
   var A=eeArvud(), box=$('eeGraaf'); if(!box) return;
   var k=A.siht>0?eeKuudSihini(A.P,A.kuus,A.r,A.g,A.siht):null;
-  var aastaid=Math.max(10,A.sv>A.vanus?A.sv-A.vanus+3:0,k!==null?Math.ceil(k/12)+3:0); aastaid=Math.min(aastaid,40);
+  var aastaid=Math.max(10,A.sv>A.vanus&&A.ok?A.sv-A.vanus+3:0,k!==null?Math.ceil(k/12)+3:0); aastaid=Math.min(aastaid,40);
   var kuud=aastaid*12, sc=[{n:'Ootus '+nf1.format(A.r*100)+'%',r:A.r,c:'var(--s-value)',w:2.4},{n:'Halb '+nf1.format(Math.max(0,A.r-0.03)*100)+'%',r:Math.max(0,A.r-0.03),c:'#f4a072',w:1.5,dash:'5 4'},{n:'Hea '+nf1.format((A.r+0.02)*100)+'%',r:A.r+0.02,c:'var(--up)',w:1.5,dash:'5 4'}];
   sc.forEach(function(x){ x.p=eeSim(A.P,A.kuus,x.r,A.g,kuud); });
   var base=sc[0].p, W=box.clientWidth||340, H=W<520?220:260, m={t:12,b:24,l:0,r:4};
@@ -793,7 +800,7 @@ function eeGraaf(){
   niceTicks(0,hi,4).forEach(function(v){ var y=Y(v); if(y<m.t+6) return;
     svg+='<line x1="0" x2="'+W+'" y1="'+y+'" y2="'+y+'" stroke="var(--line-soft)"/><text x="0" y="'+(y-5)+'" fill="var(--muted)" font-size="11.5">'+(v===0?'0':v>=1e6?nf1.format(v/1e6)+' mln €':nf0.format(v/1000)+' tuh €')+'</text>'; });
   var step=aastaid>20?5:aastaid>10?2:1;
-  for(var i=0;i<=aastaid;i+=step){ var x=X(i); if(x>W-14) continue; svg+='<text x="'+x+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11.5" text-anchor="'+(i===0?'start':'middle')+'">'+(A.vanus>0?(A.vanus+i):(new Date().getFullYear()+i))+'</text>'; }
+  for(var i=0;i<=aastaid;i+=step){ var x=X(i); if(x>W-14) continue; svg+='<text x="'+x+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11.5" text-anchor="'+(i===0?'start':'middle')+'">'+(A.koos?(new Date().getFullYear()+i):A.vanus>0?(A.vanus+i):(new Date().getFullYear()+i))+'</text>'; }
   // sissemaksed (ala) ja ootuse ala
   var pts=function(arr,key){ return arr.map(function(p,i){ return X(i).toFixed(1)+' '+Y(p[key]).toFixed(1); }); };
   svg+='<path d="M'+pts(base,'v').join('L')+'L'+X(aastaid)+' '+Y(0)+'L'+X(0)+' '+Y(0)+'Z" fill="var(--s-value)" opacity=".14"/>';
@@ -802,14 +809,14 @@ function eeGraaf(){
   sc.slice().reverse().forEach(function(x){ svg+='<path d="M'+pts(x.p,'v').join('L')+'" fill="none" stroke="'+x.c+'" stroke-width="'+x.w+'"'+(x.dash?' stroke-dasharray="'+x.dash+'"':'')+' stroke-linejoin="round"/>'; });
   if(A.siht>0&&A.siht<hi){ var ys=Y(A.siht); svg+='<line x1="0" x2="'+W+'" y1="'+ys+'" y2="'+ys+'" stroke="var(--gold)" stroke-dasharray="2 4" opacity=".8"/><text x="'+(W-2)+'" y="'+(ys-5)+'" fill="var(--gold)" font-size="11.5" text-anchor="end">eesmärk '+(A.siht>=1e6?nf1.format(A.siht/1e6)+' mln':nf0.format(A.siht/1000)+' tuh')+' €</text>'; }
   if(k!==null&&k/12<=aastaid){ svg+='<circle cx="'+X(k/12)+'" cy="'+Y(A.siht)+'" r="5" fill="var(--gold)" stroke="var(--bg)" stroke-width="2"/>'; }
-  if(A.sv>A.vanus&&A.vanus>0&&A.sv-A.vanus<=aastaid){ var xs=X(A.sv-A.vanus); svg+='<line x1="'+xs+'" x2="'+xs+'" y1="'+m.t+'" y2="'+(H-m.b)+'" stroke="var(--muted)" stroke-dasharray="3 3" opacity=".6"/>'; }
+  if(A.sv>A.vanus&&A.ok&&A.sv-A.vanus<=aastaid){ var xs=X(A.sv-A.vanus); svg+='<line x1="'+xs+'" x2="'+xs+'" y1="'+m.t+'" y2="'+(H-m.b)+'" stroke="var(--muted)" stroke-dasharray="3 3" opacity=".6"/>'; }
   svg+='<g id="eeX" style="display:none"><line id="eeXl" y1="'+m.t+'" y2="'+(H-m.b)+'" stroke="var(--muted)" stroke-dasharray="3 3"/><circle id="eeXc" r="5" fill="var(--s-value)" stroke="var(--text)" stroke-width="2"/></g></svg><div class="tip" id="eeTip"></div>';
   box.innerHTML=svg;
   $('eeLeg').innerHTML=sc.map(function(x){ return '<span><i style="background:'+x.c+'"></i>'+x.n+'<b>'+eur(x.p[x.p.length-1].v)+'</b></span>'; }).join('')+'<span><i style="background:var(--s-paid)"></i>Sissemaksed<b>'+eur(base[base.length-1].s)+'</b></span>';
   var tip=$('eeTip'), g=$('eeX');
   var move=function(ev){ var r=box.getBoundingClientRect(), x=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left, i=Math.max(0,Math.min(aastaid,Math.round((x-m.l)/(W-m.l-m.r)*aastaid))), p=base[i], px=X(i);
     g.style.display=''; $('eeXl').setAttribute('x1',px); $('eeXl').setAttribute('x2',px); $('eeXc').setAttribute('cx',px); $('eeXc').setAttribute('cy',Y(p.v));
-    tip.innerHTML='<strong>'+(A.vanus>0?(A.vanus+i)+'-aastaselt · ':'')+(new Date().getFullYear()+i)+'</strong><div><span>Portfell</span>'+eur(p.v)+'</div><div><span>Sissemaksed</span>'+eur(p.s)+'</div><div><span>Kasv</span>'+eur(p.v-p.s)+'</div><div><span>Tulu kuus</span>'+eur(p.v*A.div/12)+'</div>'+
+    tip.innerHTML='<strong>'+(A.koos?i+' a pärast · ':A.vanus>0?(A.vanus+i)+'-aastaselt · ':'')+(new Date().getFullYear()+i)+'</strong><div><span>Portfell</span>'+eur(p.v)+'</div><div><span>Sissemaksed</span>'+eur(p.s)+'</div><div><span>Kasv</span>'+eur(p.v-p.s)+'</div><div><span>Tulu kuus</span>'+eur(p.v*A.div/12)+'</div>'+
       '<div><span>Halb / hea</span>'+eur(sc[1].p[i].v)+' / '+eur(sc[2].p[i].v)+'</div>';
     tip.style.display='block'; var tw=tip.offsetWidth; tip.style.left=Math.max(0,Math.min(W-tw,px-tw/2))+'px'; tip.style.top=Math.max(0,Y(p.v)-tip.offsetHeight-12)+'px'; };
   var leave=function(){ g.style.display='none'; tip.style.display='none'; };
@@ -1406,7 +1413,7 @@ document.addEventListener('click',function(ev){
       if(b.id==='sihtSalv'){ var sh2={}; [].forEach.call(document.querySelectorAll('[data-siht]'),function(inp){ var v2=num(inp.value); if(v2>0) sh2[inp.dataset.siht]=v2; }); tegevus2='sihid'; q2={pin:sp2,p:S.p,sihid:sh2}; }
       else { if(!$('oaIn').value){ toast('Vali kuupäev'); return; } tegevus2='ostuaeg'; q2={pin:sp2,p:S.p,t:b.dataset.ostuaeg,d:$('oaIn').value}; }
       setBusy(true); api(tegevus2,q2,function(d){ setBusy(false); S.sihtMuuda=false; render(d); toast(d.teade||'Salvestatud'); },function(e){ setBusy(false); toast(/Tundmatu tegevus/.test(e.message||'')?'Server on vana. Uuenda Apps Scripti kood ja tee New version.':(e.message||String(e))); }); return; }
-    if(b.dataset.eediv){ $('eeDiv').value=b.dataset.eediv; store('pf_eeDiv',b.dataset.eediv); eeChips(); eeUuenda(); return; }
+    if(b.dataset.eediv){ $('eeDiv').value=b.dataset.eediv; store(eeKey('eeDiv'),b.dataset.eediv); eeChips(); eeUuenda(); return; }
     if(b.id==='soovNahtud'){ var mx=0; (S.data.soovMuut||[]).forEach(function(m){ if(m.ts>mx) mx=m.ts; }); store('pf_soovnahtud',String(mx)); render(); return; }
     if(b.id==='kopeeri'){ kopeeriSkript(); return; }
     if(b.id==='kLisa'){ var kn=$('kNimi').value.trim(), kp2=($('sPin')&&$('sPin').value)||store('pf_pin');
@@ -1434,7 +1441,7 @@ document.addEventListener('click',function(ev){
   if(row){ S.open=S.open===row.dataset.t?null:row.dataset.t; drawTable(); }
 });
 document.addEventListener('keydown',function(ev){ if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches&&ev.target.matches('tr.row,tr.grow,[data-vara-ava],[data-sektor]')){ if(ev.target.matches('[data-sektor]')){ ev.preventDefault(); S.varaValik=S.varaValik===ev.target.getAttribute('data-sektor')?null:ev.target.getAttribute('data-sektor'); render(); return; } ev.preventDefault(); ev.target.click(); } });
-document.addEventListener('input',function(ev){ var id=ev.target.id; if(/^ee[A-Z]/.test(id)){ store('pf_'+id,ev.target.value.trim()||null); if(id==='eeDiv') eeChips(); eeUuenda(); return; } if(id==='uusRaha'){ var ur=num(ev.target.value); store('pf_uusraha',ev.target.value.trim()||null); if(ur>0&&$('jaotus')) $('jaotus').innerHTML=jaotusRead(S.data,ur); return; } if(id==='tKanal'&&ev.target.value.trim()&&$('tNtfy')) $('tNtfy').checked=true; if(id==='pmMaar'||id==='pmSiht'){ store(id==='pmMaar'?'pf_maar':'pf_siht',ev.target.value.trim()||null); var el=$('passiivRead'); if(el&&S.data) el.innerHTML=passiivRead(S.data); } });
+document.addEventListener('input',function(ev){ var id=ev.target.id; if(/^ee[A-Z]/.test(id)){ store(eeKey(id),ev.target.value.trim()||null); if(id==='eeDiv') eeChips(); eeUuenda(); return; } if(id==='uusRaha'){ var ur=num(ev.target.value); store('pf_uusraha',ev.target.value.trim()||null); if(ur>0&&$('jaotus')) $('jaotus').innerHTML=jaotusRead(S.data,ur); return; } if(id==='tKanal'&&ev.target.value.trim()&&$('tNtfy')) $('tNtfy').checked=true; if(id==='pmMaar'||id==='pmSiht'){ store(id==='pmMaar'?'pf_maar':'pf_siht',ev.target.value.trim()||null); var el=$('passiivRead'); if(el&&S.data) el.innerHTML=passiivRead(S.data); } });
 $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.target.id!=='iMarkus') syncForm(ev.target.id==='iTicker'); });
 $('frm').addEventListener('submit',submitForm);
 $('konto').addEventListener('change',function(){ S.open=null; S.varaAva=null; S.varaValik=null; store('pf_p',this.value); load(this.value); });
