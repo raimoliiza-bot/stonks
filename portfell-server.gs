@@ -415,11 +415,11 @@ function PF_andmed_(soov) {
   try { hairekell = PF_hairekellSeis_(hinnad); } catch (he) { hairekell = null; }
   try {
     var kal = PF_loeKalender_(), syn = [], tanaMs = Date.parse(tana), divAastas = 0, divRead = [];
-    var lisaS = function (t, kuva, tyyp, d, oma) { var ms2 = Date.parse(d); if (ms2 >= tanaMs - 86400000 && ms2 <= tanaMs + 60 * 86400000) syn.push({ t: t, kuva: kuva, tyyp: tyyp, d: d, oma: oma }); };
+    var lisaS = function (t, kuva, tyyp, d, oma, hinn) { var ms2 = Date.parse(d); if (ms2 >= tanaMs - 86400000 && ms2 <= tanaMs + 60 * 86400000) syn.push({ t: t, kuva: kuva, tyyp: tyyp, d: d, oma: oma, h: hinn ? true : undefined }); };
     for (var kp2 = 0; kp2 < pos.length; kp2++) {
       var pk = pos[kp2], kk2 = kal[pk.t]; if (!kk2) continue;
       if (kk2.tul) lisaS(pk.t, pk.kuva, 'tulemused', kk2.tul, true);
-      if (kk2.exd) lisaS(pk.t, pk.kuva, 'ex-dividend', kk2.exd, true);
+      if (kk2.exd) lisaS(pk.t, pk.kuva, 'ex-dividend', kk2.exd, true, /hinnanguline/.test(kk2.markus || ''));
       if (kk2.divd && kk2.divd !== kk2.exd) lisaS(pk.t, pk.kuva, 'dividendi maksmine', kk2.divd, true);
       if (kk2.divA > 0) {
         var kv2 = 1; try { kv2 = PF_kurss_(kk2.val || pk.val, hinnad); } catch (fxe) { kv2 = null; }
@@ -1483,8 +1483,24 @@ function PF_uuendaSoovitusedYks_() {
   for (var kk = 0; kk < tickerid.length; kk++) {
     var kt = tickerid[kk], ku = uus[kt], kvn = kv[kt];
     if (ku && ku.ok && ku.kal) kread.push([kt, ku.kal.tul, ku.kal.exd, ku.kal.divd, PF_tyhiVoiArv_(ku.kal.divA === null ? NaN : PF_umarda_(ku.kal.divA, 4)),
-                                           PF_tyhiVoiArv_(ku.kal.divT === null ? NaN : PF_umarda_(ku.kal.divT, 4)), ku.kal.val, nyyd]);
-    else if (kvn) kread.push([kt, kvn.tul, kvn.exd, kvn.divd, PF_tyhiVoiArv_(kvn.divA), PF_tyhiVoiArv_(kvn.divT), kvn.val, kvn.uuendatud]);
+                                           PF_tyhiVoiArv_(ku.kal.divT === null ? NaN : PF_umarda_(ku.kal.divT, 4)), ku.kal.val, nyyd, '']);
+    else if (kvn) kread.push([kt, kvn.tul, kvn.exd, kvn.divd, PF_tyhiVoiArv_(kvn.divA), PF_tyhiVoiArv_(kvn.divT), kvn.val, kvn.uuendatud, kvn.markus || '']);
+    else kread.push([kt, '', '', '', '', '', '', nyyd, '']);
+  }
+  // Euroopa fondidel puudub Yahoo kokkuvõttes sageli dividend: arvuta hinnaajaloo dividendidest (viimased 12 kuud)
+  var puudu = kread.filter(function (r) { return !(r[4] > 0); }).map(function (r) { return r[0]; });
+  if (puudu.length) {
+    var da = PF_divAjalugu_(puudu.map(PF_soovAllikas_));
+    for (var dk = 0; dk < kread.length; dk++) {
+      var dr = kread[dk], dx = da[PF_soovAllikas_(dr[0])];
+      if (!dr[4] && dx && dx.divA > 0) {
+        var hh = (hinnad[dr[0]] || {}).hind;
+        dr[4] = PF_umarda_(dx.divA, 4); dr[6] = dx.val || dr[6] || (hinnad[dr[0]] || {}).valuuta || '';
+        if (!(dr[5] > 0) && hh > 0 && (!dx.val || dx.val === (hinnad[dr[0]] || {}).valuuta)) dr[5] = PF_umarda_(dx.divA / hh, 4);
+        if (!dr[2] && dx.jargmine) { dr[2] = dx.jargmine; dr[8] = 'ex-dividend hinnanguline (eelmine ' + dx.viimane + ')'; }
+        else dr[8] = dr[8] || 'dividend hinnaajaloost';
+      }
+    }
   }
   var kh = ss.getSheetByName('Kalender');
   if (!kh) { kh = ss.insertSheet('Kalender'); kh.setFrozenRows(1); }
@@ -1655,7 +1671,7 @@ function PF_kontrolliHairekell_() {
 
 /* ================================================================ kalender (tulemused, dividendid) */
 
-var PF_KAL_PAIS = ['Ticker', 'Tulemused', 'Ex-dividend', 'Dividendi maksmine', 'Dividend aastas', 'Dividenditootlus', 'Valuuta', 'Uuendatud'];
+var PF_KAL_PAIS = ['Ticker', 'Tulemused', 'Ex-dividend', 'Dividendi maksmine', 'Dividend aastas', 'Dividenditootlus', 'Valuuta', 'Uuendatud', 'Märkus'];
 function PF_loeKalender_() {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Kalender'), out = {};
   if (!sh || sh.getLastRow() < 2) return out;
@@ -1663,7 +1679,8 @@ function PF_loeKalender_() {
   var kp = function (x) { return x instanceof Date ? PF_paev_(x) : String(x || '').slice(0, 10); };
   for (var i = 0; i < v.length; i++) {
     var t = String(v[i][0]).trim(); if (!t) continue;
-    out[t] = { tul: kp(v[i][1]), exd: kp(v[i][2]), divd: kp(v[i][3]), divA: PF_num_(v[i][4]), divT: PF_num_(v[i][5]), val: String(v[i][6] || ''), uuendatud: v[i][7] };
+    out[t] = { tul: kp(v[i][1]), exd: kp(v[i][2]), divd: kp(v[i][3]), divA: PF_num_(v[i][4]), divT: PF_num_(v[i][5]), val: String(v[i][6] || ''), uuendatud: v[i][7],
+               markus: String(v[i][8] || '') };
   }
   return out;
 }
@@ -1682,6 +1699,40 @@ function PF_kalendriTeavitus_() {
   if (!read.length) return 'Kalender: homme sündmusi pole';
   prop.setProperty('PF_KAL_TEHTUD', JSON.stringify(tehtud.concat(uued).slice(-60)));
   return 'Kalender: ' + read.length + ' sündmust, ' + PF_teavita_('kalender', 'Homme: ' + read.length + ' sündmus' + (read.length > 1 ? 't' : ''), read, ['calendar'], 3);
+}
+
+/**
+ * Dividendid Yahoo hinnaajaloost (events=div): viimase 12 kuu summa, viimane ex-päev ja hinnanguline järgmine
+ * (viimane + tavaline vahe, nt kvartal). Tagastab {ticker: {divA, val, viimane, jargmine}}.
+ */
+function PF_divAjalugu_(tickerid) {
+  var out = {}, now = Math.floor(Date.now() / 1000), alg = now - 800 * 86400;
+  for (var i = 0; i < tickerid.length; i += PF_CFG.pakk) {
+    var osa = tickerid.slice(i, i + PF_CFG.pakk), vastused;
+    try {
+      vastused = UrlFetchApp.fetchAll(osa.map(function (t) {
+        return { url: 'https://query2.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(t) + '?period1=' + alg + '&period2=' + now + '&interval=1mo&events=div', muteHttpExceptions: true };
+      }));
+    } catch (e) { continue; }
+    for (var k = 0; k < osa.length; k++) {
+      try {
+        if (vastused[k].getResponseCode() !== 200) continue;
+        var res = JSON.parse(vastused[k].getContentText()).chart.result[0], ev = (res.events && res.events.dividends) || {}, list = [];
+        for (var key in ev) if (ev[key].amount > 0) list.push({ t: ev[key].date, a: ev[key].amount });
+        if (!list.length) continue;
+        list.sort(function (a, b) { return a.t - b.t; });
+        var aasta = list.filter(function (x) { return x.t >= now - 365 * 86400; }), summa = aasta.reduce(function (a, x) { return a + x.a; }, 0);
+        if (!(summa > 0)) continue;
+        var vahed = []; for (var j = 1; j < list.length; j++) vahed.push(list[j].t - list[j - 1].t);
+        vahed.sort(function (a, b) { return a - b; });
+        var vahe = vahed.length ? vahed[Math.floor(vahed.length / 2)] : 0, viimane = list[list.length - 1].t, jargmine = '';
+        if (vahe > 20 * 86400) { var j2 = viimane; while (j2 + vahe < now) j2 += vahe; j2 += vahe; if (j2 - now < 400 * 86400) jargmine = PF_paev_(new Date(j2 * 1000)); }
+        var val = String((res.meta && res.meta.currency) || '').toUpperCase();
+        out[osa[k]] = { divA: val === 'GBP' && /^GBp$/.test(String(res.meta.currency)) ? summa / 100 : summa, val: val, viimane: PF_paev_(new Date(viimane * 1000)), jargmine: jargmine };
+      } catch (e2) {}
+    }
+  }
+  return out;
 }
 
 /* ================================================================ võrdlus: mis oleks olnud */

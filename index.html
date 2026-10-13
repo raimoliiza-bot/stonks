@@ -452,7 +452,7 @@ function rkChip(t){ var s=rkOf(t); return s?'<span class="rk rk-'+s.k+'" title="
 function rkUp(s,hind,val){ if(s&&has(s.siht)&&has(s.hA)&&s.hA>0) return s.siht/s.hA-1; return s&&has(s.siht)&&has(hind)&&hind>0&&(!s.val||!val||s.val===val)?s.siht/hind-1:null; }
 function rkDet(t,hind,val){ var s=rkOf(t); if(!s) return '';
   var l=s.l||[0,0,0,0,0], tot=l.reduce(function(a,b){return a+b;},0), up=rkUp(s,hind,val), nim=['Tugev osta','Osta','Hoia','Müü','Tugev müü'];
-  return '<div class="range" style="margin-top:14px">Analüütikud: <b class="rk rk-'+s.k+'" style="margin-left:2px">'+RK[s.k]+'</b>'+(has(s.m)?' hinnang '+nf1.format(s.m)+' / 5':'')+(s.a?', '+s.a+' analüütikut':'')+(s.vana?' (vana seis)':'')+
+  return '<div class="range" style="margin-top:14px">Analüütikud: <b class="rk rk-'+s.k+'" style="margin-left:2px">'+RK[s.k]+'</b>'+(has(s.m)?' hinnang '+nf1.format(s.m)+' / 5':'')+(Math.max(s.a||0,tot)?', '+Math.max(s.a||0,tot)+' analüütikut':'')+(s.vana?' (vana seis)':'')+
     (tot?'<div class="anbar">'+l.map(function(x,i){ return x?'<i style="width:'+(x/tot*100).toFixed(1)+'%;background:'+RKV[i]+'" title="'+nim[i]+' '+x+'"></i>':''; }).join('')+'</div><div class="anleg">'+l.map(function(x,i){ return x?'<span style="--c:'+RKV[i]+'">'+nim[i]+' '+x+'</span>':''; }).join('')+'</div>':'')+
     (has(s.siht)?'<div style="margin-top:6px">Keskmine sihthind <b style="color:var(--text);font-weight:500">'+price(s.siht)+' '+esc(s.val||val||'')+'</b>'+(has(up)?' <b class="'+cls(up)+'" style="font-weight:500">('+pct(up)+')</b>':'')+(s.src?' · põhinoteering '+esc(s.src)+(has(s.hA)?' '+price(s.hA)+' '+esc(s.val||''):''):'')+'</div>':'')+'</div>'; }
 function rkMuutTekst(m){ var a=RK[m.enne]||'–', b=RK[m.nyyd]||'–', hinnang=m.enne!==m.nyyd;
@@ -617,10 +617,10 @@ function kalHtml(d){
   var k=d.kalender; if(!k||(!k.syndmused.length&&!k.divAastas)) return '';
   var TY={'tulemused':['tul','tulemused'],'ex-dividend':['div','ex-dividend'],'dividendi maksmine':['div','dividend']};
   var list=k.syndmused.length?'<ul class="tx kal">'+k.syndmused.map(function(e){ var ty=TY[e.tyyp]||['',e.tyyp];
-      return '<li><time>'+kp(e.d,true)+'</time><div><b style="font-weight:500">'+esc(e.kuva)+'</b><span class="chip '+ty[0]+'">'+ty[1]+'</span>'+(e.oma?'':'<small>jälgin</small>')+'</div><div></div></li>'; }).join('')+'</ul>'
+      return '<li><time>'+kp(e.d,true)+'</time><div><b style="font-weight:500">'+esc(e.kuva)+'</b><span class="chip '+ty[0]+'">'+ty[1]+(e.h?' ~':'')+'</span>'+(e.oma?'':'<small>jälgin</small>')+'</div><div></div></li>'; }).join('')+'</ul>'
     :'<p class="empty" style="text-align:left;padding:4px 0">Järgmise 60 päeva jooksul sündmusi pole.</p>';
   var div=k.divAastas>0?'<div class="split" style="margin-top:10px"><span>Oodatav dividenditulu aastas<b>≈ '+eur(k.divAastas)+'</b></span><span>Kuus keskmiselt<b>≈ '+eur(k.divAastas/12)+'</b></span><span>Sel aastal saadud<b>'+eur(k.saadudSelAastal)+'</b></span></div>'+
-      '<p class="cmp-note">Suurimad maksjad: '+k.divRead.slice(0,5).map(function(x){ return esc(x.kuva)+' '+eur(x.eur)+(has(x.tootlus)?' ('+nf1.format(x.tootlus*100)+'%)':''); }).join(', ')+'. Prognoos: praegune kogus × viimase aasta dividend.</p>':'';
+      '<p class="cmp-note">Suurimad maksjad: '+k.divRead.slice(0,5).map(function(x){ return esc(x.kuva)+' '+eur(x.eur)+(has(x.tootlus)?' ('+nf1.format(x.tootlus*100)+'%)':''); }).join(', ')+'. Prognoos: praegune kogus × viimase 12 kuu dividend. Märk ~ tähendab hinnangulist kuupäeva (eelmise väljamakse ja tavalise vahe järgi).</p>':'';
   var esim=k.syndmused[0];
   return fold('kalender','Tulemas',' <p>tulemused ja dividendid</p>',list+div,esim?kp(esim.d,true)+' '+esc(esim.kuva)+' '+(TY[esim.tyyp]||['',esim.tyyp])[1]+(k.divAastas>0?', dividende ≈ '+eur(k.divAastas)+' aastas':''):'dividende ≈ '+eur(k.divAastas)+' aastas');
 }
@@ -639,6 +639,7 @@ function vrdHtml(d){
 }
 function posVrd(p){
   var v=p.vrd; if(!v) return '';
+  if(v.uus&&v.algseis&&S.data.koos) return '<div class="range" style="margin-top:12px">Võrdluseks VWRL-i ja dividendiaktsiatega on vaja ostuaega. Ostuaeg on kontopõhine – sisestamiseks vali ülalt konto.</div>';
   if(v.uus) return v.algseis&&S.data.serveriVersioon>=10?'<div class="range" style="margin-top:12px">Võrdluseks VWRL-i ja dividendiaktsiatega on vaja ostuaega. See positsioon on sisestatud algseisuna – pane ligikaudne esimese ostu kuupäev:<div class="detact grpedit" style="margin-top:6px"><input type="date" id="oaIn" max="'+new Date().toISOString().slice(0,10)+'" aria-label="Esimese ostu kuupäev"><button type="button" class="btn" data-ostuaeg="'+esc(p.t)+'" style="padding:6px 12px;font-size:13px">Salvesta</button></div></div>':'';
   return '<div class="range" style="margin-top:12px">Kui sama raha oleks alates '+kp(v.d)+' läinud mujale (sinul praegu '+eur(v.sinu)+'):'+
     '<div class="vrd" style="margin-top:6px;font-size:13px">'+v.alt.map(function(a){ var vahe=a.kokku-v.sinu; return '<span style="color:var(--text)">'+esc(a.n)+'<small>'+(a.div>0?'sh dividendid/intress '+eur(a.div):'')+'</small></span><span style="text-align:right;color:var(--text)">'+eur(a.kokku)+'<small class="'+cls(-vahe)+'">sinust '+eur(Math.abs(vahe))+(vahe>0?' rohkem':' vähem')+'</small></span>'; }).join('')+'</div></div>';
@@ -720,7 +721,7 @@ function posRow(p, sub){
       rkDet(p.t,p.hind,p.val)+posVrd(p)+
       (p.osad&&p.osad.length?'<div class="range" style="margin-top:12px">Kontode kaupa: '+p.osad.map(function(o){ return esc(o.n)+' '+qty(o.kogus)+' tk'; }).join(', ')+'</div>':'')+
       '<div class="detact"><button type="button" class="btn" data-act="Ost" data-tk="'+esc(p.t)+'">Osta juurde</button><button type="button" class="btn" data-act="Müük" data-tk="'+esc(p.t)+'">Müü</button><button type="button" class="btn" data-act="Dividend" data-tk="'+esc(p.t)+'">Lisa dividend</button></div>'+
-      (S.data.serveriVersioon>=9?'<div class="detact grpedit">Grupp <input id="gIn" list="gList" value="'+esc(p.g||'')+'" maxlength="24" aria-label="Grupp"><datalist id="gList">'+grs.map(function(g){ return '<option value="'+esc(g)+'">'; }).join('')+'<option value="Spekulatiivsed"><option value="Indeksifondid"><option value="Krüpto"><option value="Dividendiaktsiad"></datalist><button type="button" class="btn" data-grp="'+esc(p.t)+'" style="padding:6px 12px;font-size:13px">Salvesta grupp</button></div>':'')+
+      (S.data.serveriVersioon>=9?'<div class="grpedit">Grupp <input id="gIn" list="gList" value="'+esc(p.g||'')+'" maxlength="24" aria-label="Grupp"><datalist id="gList">'+grs.map(function(g){ return '<option value="'+esc(g)+'">'; }).join('')+'<option value="Spekulatiivsed"><option value="Indeksifondid"><option value="Krüpto"><option value="Dividendiaktsiad"></datalist><button type="button" class="btn" data-grp="'+esc(p.t)+'" style="padding:6px 12px;font-size:13px">Salvesta grupp</button></div>':'')+
     '</div></td></tr>';
   }
   return row;
