@@ -45,6 +45,8 @@
   .btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:500}
   .btn.icon{width:38px;height:38px;padding:0;display:grid;place-items:center;color:var(--muted)}
   .btn.icon svg{width:17px;height:17px}
+  .btn.icon .silm-kinni{display:none} .peida .btn.icon .silm-kinni{display:inline} .peida .btn.icon .silm-lahti{display:none}
+  .peida :is(#chart,#eeGraaf) svg text{visibility:hidden}
   .btn.icon.busy svg{animation:spin .9s linear infinite}
   .btn.primary{background:var(--gold);border-color:var(--gold);color:#1a1405;font-weight:600}
   .btn.primary:disabled{opacity:.45;cursor:not-allowed}
@@ -343,6 +345,9 @@
     <h1>Portfell</h1>
     <select id="konto" class="kontosel" aria-label="Konto" hidden></select>
     <div class="grow"></div>
+    <button class="btn icon" id="btnPeida" aria-label="Peida summad" title="Peida summad" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="silm-lahti" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle class="silm-lahti" cx="12" cy="12" r="3"/><path class="silm-kinni" d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+    </button>
     <button class="btn icon" id="btnRefresh" aria-label="Värskenda hinnad" title="Värskenda hinnad">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
     </button>
@@ -405,6 +410,7 @@ function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k)||''; 
 var INSIDE = typeof google!=='undefined' && google.script && google.script.run;
 try{ S.kinni=JSON.parse(store('pf_kinni')||'{}')||{}; }catch(e){ S.kinni={}; }
 S.grp=store('pf_grp')==='grp'?'grp':'det';
+S.peida=store('pf_peida')==='1'; document.documentElement.classList.toggle('peida',S.peida); if($('btnPeida')) $('btnPeida').setAttribute('aria-pressed',S.peida);
 function apiUrl(){ return (store('pf_api')||API_URL||'').trim(); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
@@ -458,12 +464,13 @@ var nf0=mkf(0,0), nf1=mkf(1,1), nf2=mkf(2,2);
 var KUUD=['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
 function has(n){ return typeof n==='number' && isFinite(n); }
 function sign(n){ return n>0?'+':(n<0?'−':''); }
-function eur(n){ return has(n) ? (n<0?'−':'')+nf0.format(Math.abs(Math.round(n)))+' €' : '–'; }
-function eurS(n){ return has(n) ? sign(Math.round(n))+nf0.format(Math.abs(Math.round(n)))+' €' : '–'; }
-function eur2(n){ return has(n) ? (n<0?'−':'')+nf2.format(Math.abs(n))+' €' : '–'; }
+var PEIDA='•••• €';
+function eur(n){ if(S.peida&&has(n)) return PEIDA; return has(n) ? (n<0?'−':'')+nf0.format(Math.abs(Math.round(n)))+' €' : '–'; }
+function eurS(n){ if(S.peida&&has(n)) return PEIDA; return has(n) ? sign(Math.round(n))+nf0.format(Math.abs(Math.round(n)))+' €' : '–'; }
+function eur2(n){ if(S.peida&&has(n)) return PEIDA; return has(n) ? (n<0?'−':'')+nf2.format(Math.abs(n))+' €' : '–'; }
 function pct(f){ if(!has(f)) return '–'; var v=f*100, a=Math.abs(v); return sign(Math.round(v*100)/100)+(a>=100?nf0.format(a):a>=10?nf1.format(a):nf2.format(a))+'%'; }
 function price(n){ if(!has(n)) return '–'; var a=Math.abs(n); return mkf(2,a<1?4:2).format(n); }
-function qty(n){ return has(n) ? mkf(0,6).format(n) : '–'; }
+function qty(n){ if(S.peida&&has(n)) return '•••'; return has(n) ? mkf(0,6).format(n) : '–'; }
 function cls(n){ return has(n) ? (n>0?'up':(n<0?'down':'')) : 'muted'; }
 var RK={strong_buy:'Tugev osta',buy:'Osta',hold:'Hoia',underperform:'Alla turu',sell:'Müü'}, RKV=['#2fbf71','#7bd89f','#f5c04e','#f4a072','#f26d6a'];
 function rkOf(t){ var s=S.data&&S.data.soov&&S.data.soov[t]; return s&&RK[s.k]?s:null; }
@@ -988,7 +995,7 @@ function cmpHtml(d){
 function viewPortfell(d){
   var c=d.kokku, h='', vd=d.vordlus||[];
   h+=fold('seis','Portfelli väärtus','',
-     '<div class="hero"><div class="hero-top"><div class="total">'+nf0.format(Math.round(c.vaartus))+'<small>€</small></div>'+
+     '<div class="hero"><div class="hero-top"><div class="total">'+(S.peida?'••••••':nf0.format(Math.round(c.vaartus)))+'<small>€</small></div>'+
      '<div class="today '+cls(c.tana)+'"><b>'+eurS(c.tana)+'</b><span>'+pct(c.tanaPr)+' täna</span></div></div>'+
      '<div class="chart-ctl">'+segHtml('segMode',[['v','Väärtus'],['h','Tootlus']],S.mode)+segHtml('segRange',[['all','Kõik'],['ytd','Sel aastal'],['30','30 päeva']],S.range)+'</div>'+
      (vd.length>1?'<div style="margin:0 0 8px">'+segHtml('segBm',vd.map(function(x,i){ return [String(i),'vs '+esc(x.kuva)]; }),String(S.bm))+'</div>':'')+
@@ -1426,6 +1433,7 @@ document.addEventListener('click',function(ev){
     if(b.id==='sPinSave'){ store('pf_pin',$('sPin').value||null); toast($('sPin').value?'PIN jäeti meelde':'PIN on tühi'); return; }
     if(b.id==='sPinClear'){ store('pf_pin',null); $('sPin').value=''; toast('PIN unustatud'); return; }
     if(b.id==='btnAdd'){ openForm('Ost'); return; }
+    if(b.id==='btnPeida'){ S.peida=!S.peida; store('pf_peida',S.peida?'1':null); document.documentElement.classList.toggle('peida',S.peida); b.setAttribute('aria-pressed',S.peida); b.title=S.peida?'Näita summasid':'Peida summad'; b.setAttribute('aria-label',b.title); if(S.data) render(); return; }
     if(b.id==='btnRefresh'){ load(null,'varskenda'); return; }
     if(b.id==='dlgX'){ $('dlg').close(); return; }
     if(b.id==='bAll'){ var k2=findTicker($('iTicker').value), p=k2?held(k2.t):null; if(p){ $('iKogus').value=String(p.kogus).replace('.',','); syncForm(); } return; }
