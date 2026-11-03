@@ -187,6 +187,18 @@
   .jaota li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line-soft);color:var(--text)}
   .kal li .chip{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--raised);color:var(--muted);margin-left:6px}
   .kal li .chip.tul{background:#60a5fa22;color:#9cc7fb} .kal li .chip.div{background:#45c97f1c;color:var(--up)}
+  #liikG,#posAjG{position:relative;touch-action:pan-y}
+  #liikG svg,#posAjG svg{display:block;width:100%;overflow:visible}
+  :is(#liikG,#posAjG) .tip{position:absolute;top:0;pointer-events:none;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:12.5px;line-height:1.5;white-space:nowrap;box-shadow:0 8px 24px #0008;display:none;z-index:2}
+  :is(#liikG,#posAjG) .tip strong{display:block;font-weight:600;margin-bottom:2px}
+  :is(#liikG,#posAjG) .tip div{display:flex;justify-content:space-between;gap:12px}
+  :is(#liikG,#posAjG) .tip span{color:var(--muted)}
+  .peida :is(#liikG,#posAjG) svg text.raha{visibility:hidden}
+  .an-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  .an-grid div{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-md);padding:10px 12px}
+  .an-grid span{display:block;font-size:12px;color:var(--muted)}
+  .an-grid b{font-size:17px;font-weight:600}
+  .an-grid small{display:block;font-size:11.5px;color:var(--muted)}
   .badge{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;background:#f5c04e22;color:var(--gold);margin-left:6px;font-weight:500;vertical-align:1px}
   @media (max-width:560px){
     table{font-size:13.5px}
@@ -542,6 +554,11 @@ function drawChart(){
     svg+='<path d="'+path(s.k)+'" fill="none" stroke="'+s.c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
     if(P.length<=30) P.forEach(function(p){ svg+='<circle cx="'+X(p.t)+'" cy="'+Y(p[s.k])+'" r="3.5" fill="'+s.c+'" stroke="var(--bg)" stroke-width="2"/>'; });
   });
+  // tipp valitud vahemikus (väärtus või tootlus) – joon ainult siis, kui praegu ollakse tipust all
+  var pkK=S.mode==='v'?'v':'r', pk=P[0]; P.forEach(function(p){ if(p[pkK]>pk[pkK]) pk=p; });
+  var Lp=P[P.length-1], allTipust=S.mode==='v'?(pk.v>0?Lp.v/pk.v-1:0):((1+Lp.r/100)/(1+pk.r/100)-1);
+  if(allTipust<-0.0005&&pk!==Lp){ var yp=Y(pk[pkK]);
+    svg+='<line x1="'+X(pk.t)+'" x2="'+W+'" y1="'+yp+'" y2="'+yp+'" stroke="var(--muted)" stroke-dasharray="2 4" opacity=".8"/><circle cx="'+X(pk.t)+'" cy="'+yp+'" r="3" fill="var(--muted)"/>'; }
   svg+='<g id="cross" style="display:none"><line id="cl" y1="'+m.t+'" y2="'+(H-m.b)+'" stroke="var(--muted)" stroke-dasharray="3 3"/>'+
        ser.map(function(s,i){ return '<circle id="cd'+i+'" r="5" fill="'+s.c+'" stroke="var(--text)" stroke-width="2"/>'; }).join('')+'</g></svg><div class="tip" id="tip"></div>';
   box.innerHTML=svg;
@@ -552,6 +569,8 @@ function drawChart(){
               '<span>Vahe<b class="'+cls(L.r-L.m)+'">'+sign(Math.round((L.r-L.m)*10)/10)+nf1.format(Math.abs(L.r-L.m))+' pp</b></span>'
             : '<span>Tootlus ilma sissemaksete mõjuta, alates '+kp(P[0].d)+'<b class="'+cls(L.r)+'">'+pct(L.r/100)+'</b></span>'+
               (vd.length?'<span>Indeksi ajalugu selles vahemikus puudub. Käivita Apps Scriptis PF_taidaVordlus.</span>':''));
+  if(allTipust<-0.0005&&pk!==Lp) lg.innerHTML+='<span title="Tipp '+kp(pk.d)+'">Tipust ('+kp(pk.d,true)+')<b class="down">'+(S.mode==='v'?eur(Lp.v-pk.v)+' ('+pct(allTipust)+')':pct(allTipust))+'</b></span>';
+  else if(pk===Lp&&P.length>2) lg.innerHTML+='<span>Vahemiku tipus<b class="up">▲</b></span>';
   var bs=$('segBm'); if(bs) bs.hidden=!(S.mode==='h'&&vd.length>1);
   // hover
   var tip=$('tip'), cross=$('cross');
@@ -829,6 +848,140 @@ function eeGraaf(){
   var leave=function(){ g.style.display='none'; tip.style.display='none'; };
   box.onmousemove=move; box.ontouchstart=move; box.ontouchmove=move; box.onmouseleave=leave; box.ontouchend=leave;
 }
+// ---------- analüüs (päevaseisudest, arvutatakse telefonis) ----------
+function analyys(d){
+  var aj=(d.ajalugu||[]).filter(function(p){ return p.h>0; }), paev=[], i;
+  for(i=1;i<aj.length;i++){ var gap=(ms(aj[i].d)-ms(aj[i-1].d))/864e5; if(gap>=1&&gap<=4) paev.push({d:aj[i].d,r:aj[i].h/aj[i-1].h-1,b:aj[i].b&&aj[i-1].b&&aj[i].b[0]>0&&aj[i-1].b[0]>0?aj[i].b[0]/aj[i-1].b[0]-1:null}); }
+  if(paev.length<5) return null;
+  var algus=paev[0].d, alg=aj.filter(function(p){ return p.d>=algus; }), j0=aj.indexOf(alg[0])-1; if(j0>=0) alg.unshift(aj[j0]);
+  // kuud: viimane punkt kuus vs eelmise kuu viimane punkt
+  var kuuL={}, kuud=[]; alg.forEach(function(p){ var k=p.d.slice(0,7); if(!kuuL[k]) kuud.push(k); kuuL[k]=p; });
+  var kread=[], a0=alg[0], e0=kuuL[kuud[0]];
+  if(kuud.length&&e0!==a0) kread.push({k:kuud[0],r:e0.h/a0.h-1,b:e0.b&&a0.b&&e0.b[0]>0&&a0.b[0]>0?e0.b[0]/a0.b[0]-1:null,osaline:kuud.length===1,alates:a0.d});
+  for(i=1;i<kuud.length;i++){ var a=kuuL[kuud[i-1]], e=kuuL[kuud[i]];
+    kread.push({k:kuud[i],r:e.h/a.h-1,b:e.b&&a.b&&e.b[0]>0&&a.b[0]>0?e.b[0]/a.b[0]-1:null,osaline:i===kuud.length-1}); }
+  // langus tipust (osaku hind = tootlus ilma sissemakseteta)
+  var tipp=alg[0], mdd=0, mddT=null, mddP=null; alg.forEach(function(p){ if(p.h>tipp.h) tipp=p; var dd=p.h/tipp.h-1; if(dd<mdd){ mdd=dd; mddT=tipp.d; mddP=p.d; } });
+  var praegu=alg[alg.length-1].h/tipp.h-1;
+  var parim=paev[0], halvim=paev[0], plus=0, sum=0; paev.forEach(function(x){ if(x.r>parim.r) parim=x; if(x.r<halvim.r) halvim=x; if(x.r>0) plus++; sum+=x.r; });
+  var kesk=sum/paev.length, vari=paev.reduce(function(a,x){ return a+(x.r-kesk)*(x.r-kesk); },0)/Math.max(1,paev.length-1);
+  var bP=paev.filter(function(x){ return has(x.b); }), bk=bP.length?bP.reduce(function(a,x){return a+x.b;},0)/bP.length:0, bvar=bP.length>1?bP.reduce(function(a,x){ return a+(x.b-bk)*(x.b-bk); },0)/(bP.length-1):null;
+  return {algus:algus,paevi:paev.length,kuud:kread,mdd:mdd,mddT:mddT,mddP:mddP,praegu:praegu,tipp:tipp.d,parim:parim,halvim:halvim,plussPr:plus/paev.length,vol:Math.sqrt(vari*252),bvol:bvar!==null?Math.sqrt(bvar*252):null};
+}
+var KUUN=['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
+function analyysHtml(d){
+  var a=analyys(d);
+  if(!a) return fold('analyys','Analüüs','','<p class="empty" style="text-align:left;padding:4px 0">Analüüs vajab vähemalt nädala päevaseise. Need kogunevad iga õhtu kell 23.</p>','kogub andmeid');
+  var g='<div class="an-grid">'+
+    '<div><span>Suurim langus tipust</span><b class="'+(a.mdd<0?'down':'')+'">'+pct(a.mdd)+'</b><small>'+(a.mddT?kp(a.mddT,true)+' → '+kp(a.mddP,true):'langust pole olnud')+'</small></div>'+
+    '<div><span>Praegu tipust</span><b class="'+(a.praegu<-0.0005?'down':'up')+'">'+(a.praegu<-0.0005?pct(a.praegu):'tipus')+'</b><small>tipp '+kp(a.tipp,true)+'</small></div>'+
+    '<div><span>Parim päev</span><b class="up">'+pct(a.parim.r)+'</b><small>'+kp(a.parim.d,true)+(has(a.parim.b)?', S&P '+pct(a.parim.b):'')+'</small></div>'+
+    '<div><span>Halvim päev</span><b class="down">'+pct(a.halvim.r)+'</b><small>'+kp(a.halvim.d,true)+(has(a.halvim.b)?', S&P '+pct(a.halvim.b):'')+'</small></div>'+
+    '<div><span>Tõusupäevi</span><b>'+nf0.format(a.plussPr*100)+'%</b><small>'+a.paevi+' päeva andmeid</small></div>'+
+    '<div><span>Kõikumine aastas</span><b>'+nf1.format(a.vol*100)+'%</b><small>'+(has(a.bvol)?'S&P 500 '+nf1.format(a.bvol*100)+'%':'standardhälve')+'</small></div></div>';
+  var t=a.kuud.length?'<table><thead><tr><th style="text-align:left">Kuu</th><th>Portfell</th><th>S&P 500</th><th>Vahe</th></tr></thead><tbody>'+a.kuud.slice().reverse().map(function(k){ var v=has(k.b)?(k.r-k.b)*100:null;
+      return '<tr><td class="nm" style="text-align:left"><b>'+KUUN[+k.k.slice(5)-1]+' '+k.k.slice(0,4)+'</b>'+(k.osaline?'<small>pooleli</small>':k.alates?'<small>alates '+kp(k.alates,true)+'</small>':'')+'</td><td class="'+cls(k.r)+'">'+pct(k.r)+'</td><td class="'+cls(k.b)+'">'+pct(k.b)+'</td><td class="'+cls(v)+'">'+(has(v)?sign(Math.round(v*10)/10)+nf1.format(Math.abs(v))+' pp':'–')+'</td></tr>'; }).join('')+'</tbody></table>'
+      :'<p class="cmp-note">Kuude tabel ilmub, kui päevaseise on vähemalt kahe kuu lõpu kohta.</p>';
+  return fold('analyys','Analüüs','<p>alates '+kp(a.algus,true)+'</p>',g+t+'<p class="cmp-note">Tootlus on arvutatud osaku hinnast, nii et sissemaksed ja väljamaksed seda ei mõjuta. Kõikumine näitab, kui palju portfell päevast päeva liigub (aastaks taandatud); mida suurem, seda närvilisem sõit.</p>',
+    'suurim langus '+pct(a.mdd)+', kõikumine '+nf1.format(a.vol*100)+'%');
+}
+// ---------- liikumine: päevaseisud gruppide kaupa (laetakse eraldi, alles vaate avamisel) ----------
+S.liik={}; S.lRange='90'; S.lMuu=false;
+function liikHtml(d){
+  if(d.serveriVersioon<11) return '';
+  return fold('liikumine','Liikumine','','<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+segHtml('segLiik',[['30','30 p'],['90','3 k'],['ytd','Sel aastal'],['all','Kõik']],S.lRange)+segHtml('segLiikMuu',[['0','Portfell'],['1','+ muu vara']],S.lMuu?'1':'0')+'</div>'+
+    '<div class="legend" id="liikLeg"></div><div id="liikG"><p class="empty">Laen päevaseise…</p></div><div id="liikSum"></div>','grupid ja päevamuutused ajas');
+}
+function liikLae(){
+  if(!$('liikG')) return; var key=S.p+'|'+(S.data.uuendatud||'');
+  if(S.liik[key]){ liikJoonista(S.liik[key]); return; }
+  if(S.demo&&window.DEMO_LIIK){ S.liik[key]=DEMO_LIIK; liikJoonista(DEMO_LIIK); return; }
+  api('liikumine',{p:S.p},function(r){ S.liik[key]=r; if(S.view==='ulevaade') liikJoonista(r); },function(e){ var b=$('liikG'); if(b) b.innerHTML='<p class="empty">Päevaseise ei saanud laadida: '+esc(e.message||e)+'</p>'; });
+}
+function liikJoonista(r){
+  var box=$('liikG'); if(!box) return;
+  var all=(r.paevad||[]), tana=new Date().toISOString().slice(0,10), piir=S.lRange==='all'?'':S.lRange==='ytd'?tana.slice(0,4)+'-01-01':new Date(Date.now()-(+S.lRange)*864e5).toISOString().slice(0,10);
+  var P=all.filter(function(p){ return p.d>=piir; });
+  if(P.length<2){ box.innerHTML='<p class="empty">Päevaseise on veel vähe – graafik täitub iga õhtuga.</p>'; $('liikLeg').innerHTML=''; $('liikSum').innerHTML=''; return; }
+  var gv={}; grupid(S.data).forEach(function(x){ gv[x.g]=x.c; });
+  var kihid=(r.grupid||[]).map(function(g,i){ return {k:g,n:g,c:gv[g]||GRP_VARV[(i+4)%GRP_VARV.length]}; });
+  kihid.push({k:'_raha',n:'Raha',c:'#4b5563'}); if(S.lMuu) kihid.push({k:'_muu',n:'Muu vara',c:'#a78bfa'});
+  var val=function(p,k){ return k==='_raha'?p.raha:k==='_muu'?p.muu:(p.g[k]||0); };
+  var W=box.clientWidth||340, H=W<520?170:210, S2=40, B=60, m={t:10,b:22};
+  var tot=function(p){ return kihid.reduce(function(a,k){ return a+val(p,k.k); },0); };
+  var tots=P.map(tot), tMax=Math.max.apply(null,tots), tMin=Math.min.apply(null,tots), span=(tMax-tMin)||tMax*0.05;
+  var lo=Math.max(0,tMin-span*0.35), hi=tMax+span*0.2, X=function(i){ return i/(P.length-1)*(W-2)+1; }, Y=function(v){ return m.t+(1-(v-lo)/(hi-lo))*(H-m.t-m.b); };
+  var kokkuH=H+14+S2+14+B;
+  var svg='<svg viewBox="0 0 '+W+' '+kokkuH+'" height="'+kokkuH+'" role="img" aria-label="Portfelli väärtus ja koosseis ajas">';
+  niceTicks(lo,hi,4).forEach(function(v){ var y=Y(v); if(y<m.t+6||y>H-m.b-2) return; svg+='<line x1="0" x2="'+W+'" y1="'+y+'" y2="'+y+'" stroke="var(--line-soft)"/><text class="raha" x="0" y="'+(y-4)+'" fill="var(--muted)" font-size="11">'+nf0.format(v/1000)+' tuh €</text>'; });
+  var tl=tots.map(function(v,i){ return X(i).toFixed(1)+' '+Y(v).toFixed(1); });
+  svg+='<path d="M'+tl.join('L')+'L'+X(P.length-1)+' '+(H-m.b)+'L1 '+(H-m.b)+'Z" fill="var(--s-value)" opacity=".14"/><path d="M'+tl.join('L')+'" fill="none" stroke="var(--s-value)" stroke-width="2" stroke-linejoin="round"/>';
+  var nM=Math.min(5,P.length); for(var q=0;q<nM;q++){ var ix=Math.round(q*(P.length-1)/(nM-1)), xx=X(ix); svg+='<text x="'+xx+'" y="'+(H-5)+'" fill="var(--muted)" font-size="11" text-anchor="'+(q===0?'start':q===nM-1?'end':'middle')+'">'+kp(P[ix].d,true)+'</text>'; }
+  // koosseis: 100% riba
+  var sy=H+14, alus=P.map(function(){ return 0; });
+  svg+='<text x="0" y="'+(sy-3)+'" fill="var(--muted)" font-size="11">Koosseis</text>';
+  kihid.forEach(function(k){ var ylem=P.map(function(p,i){ return alus[i]+(tots[i]>0?val(p,k.k)/tots[i]:0); });
+    var yy=function(f){ return (sy+(1-f)*S2).toFixed(1); };
+    svg+='<path d="M'+ylem.map(function(f,i){ return X(i).toFixed(1)+' '+yy(f); }).join('L')+'L'+alus.slice().reverse().map(function(f,i){ return X(P.length-1-i).toFixed(1)+' '+yy(f); }).join('L')+'Z" fill="'+k.c+'" opacity=".9"/>';
+    alus=ylem; });
+  H=sy+S2;
+  // päevamuutuse tulbad
+  var mm=P.map(function(p){ return has(p.m)?p.m:0; }), mx=Math.max.apply(null,mm.map(Math.abs).concat([1])), y0=H+14+B/2, bw=Math.max(1.5,Math.min(12,(W/P.length)*0.7));
+  svg+='<line x1="0" x2="'+W+'" y1="'+y0+'" y2="'+y0+'" stroke="var(--line)"/><text x="0" y="'+(H+12)+'" fill="var(--muted)" font-size="11">Päeva turumuutus</text>';
+  mm.forEach(function(v,i){ if(!v) return; var h2=Math.abs(v)/mx*(B/2-2); svg+='<rect x="'+(X(i)-bw/2).toFixed(1)+'" y="'+(v>0?y0-h2:y0).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h2.toFixed(1)+'" rx="1" fill="'+(v>0?'var(--up)':'var(--down)')+'"/>'; });
+  svg+='<line id="lX" y1="'+m.t+'" y2="'+(H+B+14)+'" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/></svg><div class="tip" id="lTip"></div>';
+  box.innerHTML=svg;
+  var L=P[P.length-1], A0=P[0];
+  $('liikLeg').innerHTML=kihid.map(function(k){ return '<span><i style="background:'+k.c+';height:8px;width:8px;border-radius:2px"></i>'+esc(k.n)+'<b>'+eur(val(L,k.k))+'</b></span>'; }).join('');
+  var turg=P.slice(1).reduce(function(a,p){ return a+(has(p.m)?p.m:0); },0), dv=tot(L)-tot(A0);
+  var tous=P.filter(function(p){ return p.m>0; }).length, lang=P.filter(function(p){ return p.m<0; }).length;
+  $('liikSum').innerHTML='<div class="split" style="margin-top:10px"><span>Väärtuse muutus<b class="'+cls(dv)+'">'+eurS(dv)+'</b></span><span>Sellest turult<b class="'+cls(turg)+'">'+eurS(turg)+'</b></span><span>Sissemaksed jm<b>'+eurS(dv-turg)+'</b></span></div>'+
+    '<p class="cmp-note">'+kp(A0.d)+' – '+kp(L.d)+': '+tous+' tõusu- ja '+lang+' langusepäeva. Väärtuse telg ei alga nullist, et kõikumine oleks näha; koosseisu riba näitab gruppide osakaalu. Turumuutus = positsioonide väärtuse muutus miinus ostud ja müügid, nii et sissemaksed seda ei mõjuta. Vajuta graafikule, et näha päeva suurimaid liigutajaid.</p>';
+  var tip=$('lTip'), lx=$('lX');
+  var move=function(ev){ var rr=box.getBoundingClientRect(), x=(ev.touches?ev.touches[0].clientX:ev.clientX)-rr.left, i=Math.max(0,Math.min(P.length-1,Math.round((x-1)/(W-2)*(P.length-1)))), p=P[i], px=X(i);
+    lx.style.display=''; lx.setAttribute('x1',px); lx.setAttribute('x2',px);
+    tip.innerHTML='<strong>'+kp(p.d)+'</strong><div><span>Kokku</span>'+eur(tot(p))+'</div>'+kihid.filter(function(k){ return val(p,k.k)>0; }).map(function(k){ return '<div><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+k.c+';margin-right:5px"></i>'+esc(k.n)+'</span>'+nf1.format(tot(p)>0?val(p,k.k)/tot(p)*100:0)+'%</div>'; }).join('')+(has(p.m)?'<div><span>Päeva turumuutus</span><b class="'+cls(p.m)+'" style="font-weight:500">'+eurS(p.m)+'</b></div>':'')+
+      (p.top&&p.top.length?p.top.map(function(t){ return '<div><span>'+esc(t.k)+'</span><b class="'+cls(t.e)+'" style="font-weight:500">'+eurS(t.e)+'</b></div>'; }).join(''):'');
+    tip.style.display='block'; var tw=tip.offsetWidth; tip.style.left=Math.max(0,Math.min(W-tw,px-tw/2))+'px'; tip.style.top='0px'; };
+  var leave=function(){ lx.style.display='none'; tip.style.display='none'; };
+  box.onmousemove=move; box.ontouchstart=move; box.ontouchmove=move; box.onmouseleave=leave; box.ontouchend=leave;
+}
+// ---------- ühe positsiooni ajalugu (detailis) ----------
+S.posAj={};
+function posAjLae(){
+  var el=document.getElementById('posAjG'); if(!el||!S.open||S.data.serveriVersioon<11) return;
+  var t=S.open, key=S.p+'|'+t+'|'+(S.data.uuendatud||'');
+  if(S.posAj[key]){ posAjJoonista(S.posAj[key]); return; }
+  if(S.demo&&window.DEMO_POSAJ){ S.posAj[key]=DEMO_POSAJ(t); posAjJoonista(S.posAj[key]); return; }
+  api('posAjalugu',{p:S.p,t:t},function(r){ S.posAj[key]=r; if(S.open===t) posAjJoonista(r); },function(e){ var b=document.getElementById('posAjG'); if(b) b.innerHTML='<p class="cmp-note">Ajalugu ei saanud laadida: '+esc(e.message||e)+'</p>'; });
+}
+function posAjJoonista(r){
+  var box=document.getElementById('posAjG'); if(!box) return;
+  var P=(r.paevad||[]).filter(function(p){ return p.v>0||p.s>0; });
+  if(P.length<2){ box.innerHTML='<p class="cmp-note" style="margin:0">Päevaseise kogub iga õhtu – graafik ilmub mõne päeva pärast.</p>'; return; }
+  var W=box.clientWidth||300, H=110, lo=Infinity, hi=-Infinity; P.forEach(function(p){ lo=Math.min(lo,p.v); hi=Math.max(hi,p.v); });
+  var pad=(hi-lo||hi*0.05||1)*0.25; lo-=pad; hi+=pad;
+  var sMahub=P.every(function(p){ return p.s>=lo-(hi-lo)*0.6&&p.s<=hi+(hi-lo)*0.6; }); if(sMahub) P.forEach(function(p){ lo=Math.min(lo,p.s); hi=Math.max(hi,p.s); });
+  var X=function(i){ return i/(P.length-1)*(W-2)+1; }, Y=function(v){ return 6+(1-(v-lo)/(hi-lo))*(H-24); };
+  var pv=P.map(function(p,i){ return X(i).toFixed(1)+' '+Y(p.v).toFixed(1); }), ps=P.map(function(p,i){ return X(i).toFixed(1)+' '+Y(p.s).toFixed(1); });
+  var L=P[P.length-1], A=P[0], kasum=(L.v-L.s)-(A.v-A.s), hpr=has(L.hind)&&has(A.hind)&&A.hind>0?L.hind/A.hind-1:null;
+  box.innerHTML='<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px"><span>Ajalugu '+kp(A.d,true)+' – '+kp(L.d,true)+'</span><span>kasum <b class="'+cls(kasum)+'" style="font-weight:500">'+eurS(kasum)+'</b>'+(has(hpr)?', hind '+'<b class="'+cls(hpr)+'" style="font-weight:500">'+pct(hpr)+'</b>':'')+'</span></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'" role="img" aria-label="Positsiooni väärtus ajas">'+
+    (sMahub?'<path d="M'+pv.join('L')+'L'+ps.slice().reverse().join('L')+'Z" fill="'+(L.v>=L.s?'var(--up)':'var(--down)')+'" opacity=".12"/><path d="M'+ps.join('L')+'" fill="none" stroke="var(--s-paid)" stroke-width="1.5" stroke-dasharray="4 3"/>'
+           :'<path d="M'+pv.join('L')+'L'+X(P.length-1)+' '+(H-18)+'L1 '+(H-18)+'Z" fill="var(--s-value)" opacity=".10"/>')+
+    '<path d="M'+pv.join('L')+'" fill="none" stroke="var(--s-value)" stroke-width="2"/>'+
+    '<text class="raha" x="1" y="14" fill="var(--muted)" font-size="10.5">'+eur(hi)+'</text><text class="raha" x="1" y="'+(H-22)+'" fill="var(--muted)" font-size="10.5">'+eur(lo)+'</text>'+
+    '<text x="1" y="'+(H-4)+'" fill="var(--muted)" font-size="10.5">'+kp(A.d,true)+'</text><text x="'+(W-1)+'" y="'+(H-4)+'" fill="var(--muted)" font-size="10.5" text-anchor="end">'+kp(L.d,true)+'</text>'+
+    '<line id="paX" y1="4" y2="'+(H-18)+'" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/></svg><div class="tip" id="paTip"></div>'+
+    '<div class="legend" style="margin-top:4px"><span><i style="background:var(--s-value)"></i>Väärtus</span>'+(sMahub?'<span><i style="background:var(--s-paid)"></i>Soetusmaksumus</span>':'<span>soetusmaksumus '+eur(L.s)+' (graafikust väljas)</span>')+'</div>';
+  var tip=document.getElementById('paTip'), lx=document.getElementById('paX');
+  var move=function(ev){ var rr=box.getBoundingClientRect(), x=(ev.touches?ev.touches[0].clientX:ev.clientX)-rr.left, i=Math.max(0,Math.min(P.length-1,Math.round((x-1)/(W-2)*(P.length-1)))), p=P[i], px=X(i);
+    lx.style.display=''; lx.setAttribute('x1',px); lx.setAttribute('x2',px);
+    tip.innerHTML='<strong>'+kp(p.d)+'</strong><div><span>Väärtus</span>'+eur(p.v)+'</div><div><span>Kasum</span><b class="'+cls(p.v-p.s)+'" style="font-weight:500">'+eurS(p.v-p.s)+'</b></div>'+(has(p.hind)?'<div><span>Hind</span>'+price(p.hind)+'</div>':'')+'<div><span>Kogus</span>'+qty(p.kogus)+'</div>';
+    tip.style.display='block'; var tw=tip.offsetWidth; tip.style.left=Math.max(0,Math.min(W-tw,px-tw/2))+'px'; tip.style.top='18px'; };
+  var leave=function(){ lx.style.display='none'; tip.style.display='none'; };
+  box.onmousemove=move; box.ontouchstart=move; box.ontouchmove=move; box.onmouseleave=leave; box.ontouchend=leave;
+}
 var GRP_VARV=['#f5c04e','#60a5fa','#45c97f','#c084fc','#f4a072','#2dd4bf','#f472b6','#a3a3a3'];
 /** Grupid: positsioonid koondatud (väärtus, täna, kasum, aasta – kaalutud). */
 function grupid(d){
@@ -871,6 +1024,7 @@ function posRow(p, sub){
         (p.g?'<div><span>Grupp</span><b>'+esc(p.g)+'</b></div>':'')+
       '</div>'+
       (pos52!==null?'<div class="range">52 nädala vahemik<div class="track"><i style="left:'+pos52+'%"></i></div><div class="ends"><span>'+price(p.min52)+'</span><span>'+price(p.max52)+'</span></div></div>':'')+
+      (S.data.serveriVersioon>=11?'<div id="posAjG" style="margin-top:14px"><p class="cmp-note" style="margin:0">Laen ajalugu…</p></div>':'')+
       rkDet(p.t,p.hind,p.val)+posVrd(p)+
       (p.osad&&p.osad.length?'<div class="range" style="margin-top:12px">Kontode kaupa: '+p.osad.map(function(o){ return esc(o.n)+' '+qty(o.kogus)+' tk'; }).join(', ')+'</div>':'')+
       '<div class="detact"><button type="button" class="btn" data-act="Ost" data-tk="'+esc(p.t)+'">Osta juurde</button><button type="button" class="btn" data-act="Müük" data-tk="'+esc(p.t)+'">Müü</button><button type="button" class="btn" data-act="Dividend" data-tk="'+esc(p.t)+'">Lisa dividend</button></div>'+
@@ -902,6 +1056,7 @@ function drawTable(){
   $('ptable').innerHTML='<thead>'+head+'</thead><tbody>'+bar+body+
     '<tr class="clicky" data-cash="1" title="Paranda raha jääki"><td class="nm"><b>Vaba raha</b><small>vajuta jäägi parandamiseks</small></td><td></td><td class="val">'+eur(c.raha)+'<small>'+(c.vaartus>0?nf1.format(c.raha/c.vaartus*100)+'%':'')+'</small></td><td></td><td class="col-yr"></td></tr>'+
     '<tr class="sum"><td>Kokku</td><td class="'+cls(c.tana)+'">'+pct(c.tanaPr)+'<small>'+eurS(c.tana)+'</small></td><td class="val">'+eur(c.vaartus)+'</td><td class="'+cls(c.realiseerimata)+'">'+eurS(c.realiseerimata)+'</td><td class="col-yr '+cls(c.aastaPr)+'">'+pct(c.aastaPr)+'</td></tr></tbody>';
+  posAjLae();
 }
 
 // ---------- kogu vaade ----------
@@ -1151,6 +1306,7 @@ function viewYlevaade(d){
      '<p class="cmp-note">Vajuta diagrammi sektorile, et näha selle nime ja osakaalu. Vajuta nimekirjas varale, et seda muuta või kustutada. Kulla väärtus arvutatakse untsi turuhinnast (kullafutuur, eurodesse ümber arvestatud); füüsilise kulla müügihind võib sellest veidi erineda. Mitme ostu korral pane koguseks summa ja ostuhinnaks keskmine.</p>',
      '<b class="gold">'+eur(kokku)+'</b>'+(osad.length>1?' '+osad.length+' osas':''), true);
 
+  h+=liikHtml(d);
   var aastaid=a0&&aL?(ms(aL.d)-ms(a0.d))/864e5/365.25:0, cagr=aastaid>0.5&&a0.h>0?Math.pow(aL.h/a0.h,1/aastaid)-1:null;
   h+=fold('passiiv','Passiivne tulu','',passiivHtml(d),(function(){ var m=num(store('pf_maar')||'4'); return '<b>'+eur(d.kokku.vaartus*(m>=0?m:0)/100/12)+'</b> kuus, määr '+nf1.format(m>=0?m:0)+'%'; })());
 
@@ -1162,6 +1318,7 @@ function viewYlevaade(d){
      '<div class="split"><span>Sisse makstud<b>'+eur(c.netoSisse)+'</b></span><span>Realiseerimata<b class="'+cls(c.realiseerimata)+'">'+eurS(c.realiseerimata)+'</b></span><span>Realiseeritud<b class="'+cls(c.realiseeritud)+'">'+eurS(c.realiseeritud)+'</b></span><span>Dividendid<b>'+eur(c.dividendid)+'</b></span></div>',
      'kasum <b class="'+cls(c.kasum)+'">'+eurS(c.kasum)+'</b>, algusest <b class="'+cls(c.algusestPr)+'">'+pct(c.algusestPr)+'</b>');
 
+  h+=analyysHtml(d);
   h+=vrdHtml(d);
   h+=fold('aastad','Tootlus aastate kaupa','','<table><thead><tr><th>Aasta</th><th class="yr-s">Sisse makstud</th><th>Väärtus lõpus</th><th>Kasum</th><th>Tootlus</th>'+
      vd.map(function(x){ return '<th>'+esc(x.kuva)+'</th>'; }).join('')+'<th class="yr-s">Kuus</th></tr></thead><tbody>'+
@@ -1233,8 +1390,9 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 12, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 13, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
+  if(S.view==='ulevaade') liikLae();
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); if($('sihidBox')) $('sihidBox').innerHTML=sihidHtml(d); }
 }
 function fail(e){
@@ -1390,6 +1548,8 @@ document.addEventListener('click',function(ev){
     if(seg==='segRange'){ S.range=b.dataset.v; render(); return; }
     if(seg==='segBm'){ S.bm=+b.dataset.v; S.mode='h'; render(); return; }
     if(seg==='segGrp'){ S.grp=b.dataset.v; store('pf_grp',S.grp); S.openG=null; render(); return; }
+    if(seg==='segLiik'){ S.lRange=b.dataset.v; [].forEach.call(b.parentNode.children,function(x){ x.setAttribute('aria-pressed',x===b); }); liikLae(); return; }
+    if(seg==='segLiikMuu'){ S.lMuu=b.dataset.v==='1'; [].forEach.call(b.parentNode.children,function(x){ x.setAttribute('aria-pressed',x===b); }); liikLae(); return; }
     if(seg==='segHeat'){ S.heat=b.dataset.v; [].forEach.call(b.parentNode.children,function(x){ x.setAttribute('aria-pressed',x===b); }); drawHeat(); return; }
     if(seg==='types'){ S.tyyp=b.dataset.t; $('err').textContent=''; syncForm(true); return; }
     if(b.dataset.sort){ var k=b.dataset.sort; S.sort=S.sort.k===k?{k:k,dir:-S.sort.dir}:{k:k,dir:k==='kuva'?1:-1}; drawTable(); return; }
@@ -1454,7 +1614,7 @@ $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.tar
 $('frm').addEventListener('submit',submitForm);
 $('konto').addEventListener('change',function(){ S.open=null; S.varaAva=null; S.varaValik=null; store('pf_p',this.value); load(this.value); });
 $('dlg').addEventListener('click',function(ev){ if(ev.target===$('dlg')) $('dlg').close(); });
-var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(function(){ if(S.data&&S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); } if(S.data&&S.view==='eesmark') eeGraaf(); },120); });
+var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(function(){ if(S.data&&S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); } if(S.data&&S.view==='eesmark') eeGraaf(); if(S.data&&S.view==='ulevaade') liikLae(); if(S.data&&S.open) posAjLae(); },120); });
 setInterval(function(){ if(!document.hidden&&S.data&&!$('dlg').open&&S.view!=='seaded') load(); },5*60*1000);
 // Avakuvale paigaldatav rakendus: ainult siis, kui leht tuleb oma veebiaadressilt (nt GitHub Pages), mitte Apps Scriptist ega failist.
 if(!INSIDE && location.protocol==='https:' || location.hostname==='localhost'){

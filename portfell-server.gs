@@ -11,7 +11,7 @@
  * Lugemine on avatud kõigile, kellel on link (nagu vanas vaates). Tehingu lisamine nõuab PIN-i.
  */
 
-var PF_PIN = '0000';            // ← pane siia oma PIN (vähemalt 4 märki)
+var PF_PIN = '';            // ← pane siia oma PIN (vähemalt 4 märki)
 var PF_PIN_KATSEID = 5;     // pärast nii mitut vale PIN-i on lisamine 15 minutiks lukus
 var PF_VARSKENDUS_VAHE = 120;   // sekundit: äpi "Värskenda" ei küsi Yahoolt hindu tihemini
 
@@ -76,6 +76,8 @@ function PF_api(tegevus, q) {
       dd2.teade = 'Ostuaeg salvestatud (' + mo + ' rida)';
       return dd2;
     }
+    if (tegevus === 'liikumine') return PF_liikumine_(q.p);
+    if (tegevus === 'posAjalugu') return PF_posAjalugu_(q.p, q.t);
     if (tegevus === 'grupp') {
       PF_kontrolliPin_(q.pin);
       var gg = PF_salvestaGrupp_(q.t, q.g);
@@ -496,7 +498,7 @@ function PF_andmed_(soov) {
   return {
     portfellid: portfellid, portfell: nimi, valik: koos ? '*' : nimi, koos: koos,
     uuendatud: uuendatud ? Utilities.formatDate(uuendatud, PF_CFG.ajavoond, 'dd.MM.yyyy HH:mm') : '',
-    serveriVersioon: 10, vanu: vanu, hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
+    serveriVersioon: 11, vanu: vanu, hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
     kokku: {
       vaartus: r2(s.kokku), aktsiad: r2(s.aktsiad), raha: r2(s.raha), netoSisse: r2(s.netoSisse),
       kasum: r2(s.kokku - s.netoSisse), kasumPr: s.netoSisse > 0 ? n((s.kokku - s.netoSisse) / s.netoSisse, 4) : null,
@@ -1183,6 +1185,70 @@ function PF_logiPositsioonid_(nimi, s, muud, tana) {
   var kokku = alles.concat(uued);
   if (plokk > 0) sh.getRange(algus, 1, plokk, PF_POSAJ_PAIS.length).clearContent();
   sh.getRange(plokk > 0 ? algus : 2, 1, kokku.length, PF_POSAJ_PAIS.length).setValues(kokku);
+}
+
+/** Loeb lehe "Positsioonid ajas" valitud kontode kohta: {paev: [{konto, t, kogus, hind, v, soetus}]}. */
+function PF_loePosAjalugu_(nimed, ticker) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Positsioonid ajas'), out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  var v = sh.getRange(2, 1, sh.getLastRow() - 1, PF_POSAJ_PAIS.length).getValues();
+  for (var i = 0; i < v.length; i++) {
+    var r = v[i]; if (!(r[0] instanceof Date)) continue;
+    var konto = String(r[1]).trim(), t = String(r[2]).trim();
+    if (nimed.indexOf(konto) < 0 || (ticker && t !== ticker)) continue;
+    var d = PF_paev_(r[0]);
+    (out[d] = out[d] || []).push({ konto: konto, t: t, kogus: PF_num_(r[3]), hind: PF_num_(r[4]), v: PF_num_(r[6]), soetus: PF_num_(r[7]) });
+  }
+  return out;
+}
+function PF_nimed_(soov) {
+  var pf = PF_portfellid_();
+  if (soov === '*' && pf.length > 1) return pf;
+  for (var i = 0; i < pf.length; i++) if (pf[i].toLowerCase() === String(soov || '').trim().toLowerCase()) return [pf[i]];
+  return [pf[0]];
+}
+/**
+ * "Liikumine": iga päeva lõppseis gruppide kaupa + päeva turumuutus (väärtuse muutus miinus soetuse muutus,
+ * st sissemaksed ja ostud ei loe) ja päeva suurimad liigutajad.
+ */
+function PF_liikumine_(soov) {
+  var nimed = PF_nimed_(soov), hinnad = PF_loeHinnad_(), aj = PF_loePosAjalugu_(nimed, ''), paevad = Object.keys(aj).sort();
+  var r2 = function (x) { return PF_umarda_(x, 2); }, grupid = [], gOlemas = {}, eel = null, out = [];
+  for (var i = 0; i < paevad.length; i++) {
+    var read = aj[paevad[i]], g = {}, raha = 0, muu = 0, pl = {}, kuva = {};
+    for (var j = 0; j < read.length; j++) {
+      var x = read[j], val = isFinite(x.v) ? x.v : 0;
+      if (x.t === 'RAHA') { raha += val; continue; }
+      if (x.t.indexOf('VARA: ') === 0) { muu += val; continue; }
+      var gr = PF_grupp_(x.t, hinnad[x.t]);
+      if (!gOlemas[gr]) { gOlemas[gr] = true; grupid.push(gr); }
+      g[gr] = (g[gr] || 0) + val;
+      pl[x.t] = (pl[x.t] || 0) + val - (isFinite(x.soetus) ? x.soetus : 0);
+      kuva[x.t] = (hinnad[x.t] || {}).kuva || PF_kuvanimi_(x.t);
+    }
+    var aktsiad = 0; for (var k in g) { aktsiad += g[k]; g[k] = r2(g[k]); }
+    var p = { d: paevad[i], g: g, raha: r2(raha), muu: r2(muu), v: r2(aktsiad + raha) };
+    if (eel) {
+      var muut = 0, lii = [];
+      for (var t in pl) { var dd = pl[t] - (eel.pl[t] || 0); if (eel.pl[t] === undefined) dd = 0; muut += dd; if (Math.abs(dd) >= 1) lii.push({ k: kuva[t], e: r2(dd) }); }
+      lii.sort(function (a, b) { return Math.abs(b.e) - Math.abs(a.e); });
+      p.m = r2(muut); p.top = lii.slice(0, 4);
+    }
+    out.push(p); eel = { pl: pl };
+  }
+  return { paevad: out, grupid: grupid };
+}
+/** Ühe positsiooni ajalugu (koondvaates kontod kokku). */
+function PF_posAjalugu_(soov, ticker) {
+  ticker = String(ticker || '').trim().toUpperCase();
+  if (!ticker) throw new Error('Ticker puudub');
+  var aj = PF_loePosAjalugu_(PF_nimed_(soov), ticker), out = [];
+  Object.keys(aj).sort().forEach(function (d) {
+    var kog = 0, v = 0, so = 0, hind = null;
+    aj[d].forEach(function (x) { kog += x.kogus || 0; v += isFinite(x.v) ? x.v : 0; so += isFinite(x.soetus) ? x.soetus : 0; if (isFinite(x.hind)) hind = x.hind; });
+    out.push({ d: d, kogus: kog, hind: hind, v: PF_umarda_(v, 2), s: PF_umarda_(so, 2) });
+  });
+  return { t: ticker, paevad: out };
 }
 
 /** Kirjutab Ajalugu lehe päise (lisab võrdlusindeksite veerud, kui leht on tehtud vanema versiooniga). */
