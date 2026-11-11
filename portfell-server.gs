@@ -14,6 +14,7 @@
 var PF_PIN = '';            // ← pane siia oma PIN (vähemalt 4 märki)
 var PF_PIN_KATSEID = 5;     // pärast nii mitut vale PIN-i on lisamine 15 minutiks lukus
 var PF_VARSKENDUS_VAHE = 120;   // sekundit: äpi "Värskenda" ei küsi Yahoolt hindu tihemini
+var PF_FG_GITHUB = 'https://raw.githubusercontent.com/raimoliiza-bot/stonks/main/data/fg.json';   // Fear & Greed koopia (GitHub Actions)
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
@@ -68,6 +69,13 @@ function PF_api(tegevus, q) {
       var ds = PF_andmed_(q.p);
       ds.teade = 'Sihid salvestatud';
       return ds;
+    }
+    if (tegevus === 'kullasiht') {
+      PF_kontrolliPin_(q.pin);
+      PF_salvestaKullaSiht_(q.p, q.siht, q.yhik);
+      var dks = PF_andmed_(q.p);
+      dks.teade = 'Kulla siht salvestatud';
+      return dks;
     }
     if (tegevus === 'ostuaeg') {
       PF_kontrolliPin_(q.pin);
@@ -494,11 +502,14 @@ function PF_andmed_(soov) {
     }
   } catch (se) { soov = {}; soovMuut = []; }
 
+  var labivaade = null;
+  try { labivaade = PF_labivaade_(pos); } catch (lve) { labivaade = null; }
+
   var uuendatud = PF_viimaneUuendus_(hinnad), eilne = s.aktsiad - s.tana;
   return {
     portfellid: portfellid, portfell: nimi, valik: koos ? '*' : nimi, koos: koos,
     uuendatud: uuendatud ? Utilities.formatDate(uuendatud, PF_CFG.ajavoond, 'dd.MM.yyyy HH:mm') : '',
-    serveriVersioon: 11, vanu: vanu, hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
+    serveriVersioon: 13, vanu: vanu, hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
     kokku: {
       vaartus: r2(s.kokku), aktsiad: r2(s.aktsiad), raha: r2(s.raha), netoSisse: r2(s.netoSisse),
       kasum: r2(s.kokku - s.netoSisse), kasumPr: s.netoSisse > 0 ? n((s.kokku - s.netoSisse) / s.netoSisse, 4) : null,
@@ -519,7 +530,9 @@ function PF_andmed_(soov) {
       return { email: se.email, ntfy: se.ntfy, kanal: !!se.kanal, kanalLopp: se.kanal ? se.kanal.slice(-4) : '', piir: Math.round(se.piir * 100),
                teemad: se.teemad, puhver: se.puhver };
     })(),
-    hairekell: hairekell, kalender: kalender, vordlusAlt: vordlusAlt, sihid: sihid
+    hairekell: hairekell, kalender: kalender, vordlusAlt: vordlusAlt, sihid: sihid,
+    labivaade: labivaade,
+    kullaSiht: (function () { try { return PF_loeKullaSiht_(koos ? nimed : [nimi]); } catch (ke) { return null; } })()
   };
 }
 
@@ -1496,6 +1509,7 @@ function PF_uuendaSoovitused() {
   var logi = [];
   try { logi.push(PF_uuendaSoovitusedYks_()); } catch (e) { logi.push('Soovitused: ' + e.message); }
   try { logi.push(PF_uuendaTurgLisa_()); } catch (e2) { logi.push('Turu lisaandmed: ' + e2.message); }
+  try { logi.push(PF_uuendaEtfSisu_(false)); } catch (e2b) { logi.push('ETF sisu: ' + e2b.message); }
   try { logi.push(PF_uuendaVordlus_()); } catch (e3) { logi.push('Võrdlus: ' + e3.message); }
   try { logi.push(PF_kontrolliHairekell_()); } catch (e4) { logi.push('Häirekell: ' + e4.message); }
   try { logi.push(PF_kalendriTeavitus_()); } catch (e5) { logi.push('Kalender: ' + e5.message); }
@@ -1670,13 +1684,33 @@ function PF_teavita_(teema, pealkiri, read, tags, prioriteet) {
 function PF_uuendaTurgLisa_() {
   var prop = PropertiesService.getScriptProperties(), L = {}, logi = [];
   try { L = JSON.parse(prop.getProperty('PF_TURG_LISA') || '{}'); } catch (e) {}
-  var ua = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', 'Accept': 'application/json' };
+  // CNN blokeerib Google'i serverid sageli (418/403). Esmalt proovitakse otse brauseri päistega,
+  // siis GitHub Actionsi koopiat (stonks repo data/fg.json, sama meetod mis kodutahvlis).
+  var fgLoe = function (j, allikas) {
+    var fg = (j && j.fear_and_greed) || j || {}, sk = typeof fg.score === 'number' ? fg.score : fg.s;
+    if (typeof sk !== 'number') return false;
+    var nr = function (v) { return typeof v === 'number' ? PF_umarda_(v, 0) : null; };
+    L.fg = { s: PF_umarda_(sk, 1), r: String(fg.rating || fg.r || ''), d: PF_paev_(new Date()),
+             e: nr(fg.previous_close !== undefined ? fg.previous_close : fg.e), w: nr(fg.previous_1_week !== undefined ? fg.previous_1_week : fg.w),
+             m: nr(fg.previous_1_month !== undefined ? fg.previous_1_month : fg.m), a: allikas, ts: fg.ts || fg.timestamp || '' };
+    logi.push('F&G ' + L.fg.s + ' (' + allikas + ')'); return true;
+  };
+  var fgOk = false;
   try {
-    var r = UrlFetchApp.fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata/', { muteHttpExceptions: true, headers: ua });
-    var j = JSON.parse(r.getContentText()), fg = j.fear_and_greed || {};
-    if (typeof fg.score === 'number') { L.fg = { s: PF_umarda_(fg.score, 1), r: String(fg.rating || ''), d: PF_paev_(new Date()) }; logi.push('F&G ' + L.fg.s); }
-    else logi.push('F&G: andmeid pole (HTTP ' + r.getResponseCode() + ')');
-  } catch (e1) { logi.push('F&G: ' + String(e1.message || e1).slice(0, 60)); }
+    var r = UrlFetchApp.fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata', { muteHttpExceptions: true, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*', 'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://edition.cnn.com/', 'Origin': 'https://edition.cnn.com' } });
+    if (r.getResponseCode() === 200) fgOk = fgLoe(JSON.parse(r.getContentText()), 'CNN');
+    if (!fgOk) logi.push('F&G CNN: HTTP ' + r.getResponseCode());
+  } catch (e1) { logi.push('F&G CNN: ' + String(e1.message || e1).slice(0, 60)); }
+  if (!fgOk) {
+    try {
+      var rg = UrlFetchApp.fetch(PF_FG_GITHUB + '?t=' + Date.now(), { muteHttpExceptions: true });
+      if (rg.getResponseCode() === 200) fgOk = fgLoe(JSON.parse(rg.getContentText()), 'GitHub');
+      if (!fgOk) logi.push('F&G GitHub: HTTP ' + rg.getResponseCode());
+    } catch (e1b) { logi.push('F&G GitHub: ' + String(e1b.message || e1b).slice(0, 60)); }
+  }
   try {
     var r2 = UrlFetchApp.fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2', { muteHttpExceptions: true });
     var rid = String(r2.getContentText() || '').split(/\r?\n/), pts = [];
@@ -1697,6 +1731,9 @@ function PF_uuendaTurgLisa_() {
   prop.setProperty('PF_TURG_LISA', JSON.stringify(L));
   return 'Turu lisaandmed: ' + logi.join(', ');
 }
+
+/** Käivita see Apps Scripti redaktorist (rippmenüüst), et Fear & Greed kohe ära tuua ja logist allikat näha. */
+function PF_proovFearGreed() { var t = PF_uuendaTurgLisa_(); Logger.log(t); return t; }
 
 /** Häirekella seis praeguste hindade ja päevaste lisaandmete järgi (sinu reeglid). */
 function PF_hairekellSeis_(hinnad) {
@@ -1914,6 +1951,26 @@ function PF_salvestaSihid_(konto, sihid) {
   prop.setProperty('PF_SIHID', JSON.stringify(k));
   return puhas;
 }
+/** Kulla siht konto kohta: {u: troiuntse, y: 'oz'|'g'|'kg'}. Koondvaates summeeritakse kontode sihid. */
+function PF_loeKullaSiht_(kontod) {
+  var k = {}; try { k = JSON.parse(PropertiesService.getScriptProperties().getProperty('PF_KULLASIHT') || '{}'); } catch (e) {}
+  var u = 0, y = null, mitu = 0;
+  (kontod || []).forEach(function (n) { var x = k[n]; if (x && x.u > 0) { u += x.u; mitu++; y = y === null || y === x.y ? x.y : 'g'; } });
+  return mitu ? { u: PF_umarda_(u, 6), y: y || 'g' } : null;
+}
+/** siht = arv valitud ühikus; 0 või tühi eemaldab sihi (äpp kasutab siis 1 kg). */
+function PF_salvestaKullaSiht_(konto, siht, yhik) {
+  konto = PF_konto_(konto);
+  var prop = PropertiesService.getScriptProperties(), k = {};
+  try { k = JSON.parse(prop.getProperty('PF_KULLASIHT') || '{}'); } catch (e) {}
+  var v = PF_num_(siht), y = ({ oz: 'oz', g: 'g', kg: 'kg' })[String(yhik || 'kg')] || 'kg';
+  if (!(v > 0)) { delete k[konto]; prop.setProperty('PF_KULLASIHT', JSON.stringify(k)); return null; }
+  var u = y === 'oz' ? v : y === 'g' ? v / 31.1034768 : v * 1000 / 31.1034768;
+  if (u > 100000) throw new Error('Siht on liiga suur');
+  k[konto] = { u: PF_umarda_(u, 6), y: y };
+  prop.setProperty('PF_KULLASIHT', JSON.stringify(k));
+  return k[konto];
+}
 /** Algseisuna sisestatud ostude kuupäev (võrdluse jaoks): kõik selle konto ja tickeri "algseis" ostud. */
 function PF_salvestaOstuaeg_(konto, ticker, kuupaev) {
   konto = PF_konto_(konto); ticker = String(ticker || '').trim().toUpperCase();
@@ -2052,4 +2109,158 @@ function onOpen() {
     .addItem('Uuenda analüütikute soovitused', 'PF_uuendaSoovitused')
     .addItem('Saada proovikiri', 'PF_proovikiri')
     .addToUi();
+}
+
+/* ================================================================ ETF-ide sisu (läbivaade) */
+/*
+ * Kord nädalas (kell 22 käivituses, kui andmed on üle 6 päeva vanad) küsitakse Yahoolt iga omatava fondi top 10 positsiooni
+ * (quoteSummary moodul topHoldings) ja kirjutatakse lehele "ETF sisu". Andmepäringul jagatakse ETF-i väärtus kaalude järgi
+ * ettevõtete vahel ja liidetakse otse omatavate aktsiatega. Sama ettevõtte aktsiaklassid (nt GOOGL ja GOOG) on üks rida.
+ * Täielik sisu fondi väljastajalt (iShares CSV, Vanguard) võib hiljem tulla GitHub Actionsist samale lehele.
+ */
+var PF_ETF_LEHT = 'ETF sisu';
+var PF_ETF_PAIS = ['ETF', 'Ettevõte', 'Sümbol', 'Kaal', 'Uuendatud', 'Allikas'];
+// Sümbolid, mis tähendavad sama ettevõtet (muidu otsustab normaliseeritud nimi).
+var PF_ETTEVOTE_ALIAS = { 'GOOG': 'alphabet', 'GOOGL': 'alphabet', 'ABEA': 'alphabet', 'ABEC': 'alphabet', 'BRK-A': 'berkshire hathaway', 'BRK-B': 'berkshire hathaway' };
+var PF_NIMI_MYRA = ['inc', 'incorporated', 'corp', 'corporation', 'co', 'company', 'ltd', 'limited', 'plc', 'sa', 'ag', 'nv', 'se', 'asa', 'ab', 'oyj', 'spa',
+                    'the', 'class', 'cl', 'a', 'b', 'c', 'adr', 'ads', 'holding', 'holdings', 'group', 'registered', 'shares', 'share', 'ord', 'ordinary', 'common', 'stock', 'reg', 'new'];
+
+/** Ettevõtte võti ühendamiseks: alias sümboli järgi, muidu nimi ilma juriidilise vormi ja aktsiaklassita. */
+function PF_ettevoteVoti_(symbol, nimi) {
+  var s = String(symbol || '').toUpperCase().replace(/\.[A-Z]{1,3}$/, '');
+  if (PF_ETTEVOTE_ALIAS[s]) return PF_ETTEVOTE_ALIAS[s];
+  var sonad = String(nimi || symbol || '').toLowerCase().replace(/[.,'’()\/]/g, ' ').replace(/&/g, ' and ').split(/[\s\-]+/)
+    .filter(function (w) { return w && PF_NIMI_MYRA.indexOf(w) < 0; });
+  return sonad.join(' ') || s.toLowerCase();
+}
+
+/** Yahoo topHoldings: {ticker: {ok, tyyp, top:[{s, n, w}]} | {ok:false, viga}}. */
+function PF_tooEtfSisu_(tickerid) {
+  var tulem = {}, cr = PF_yahooCrumb_(false), jarel = tickerid.slice();
+  for (var katse = 0; katse < 2 && jarel.length; katse++) {
+    if (katse > 0) { Utilities.sleep(1500); cr = PF_yahooCrumb_(true); }
+    var uuesti = [];
+    for (var i = 0; i < jarel.length; i += PF_CFG.pakk) {
+      if (i > 0) Utilities.sleep(400);
+      var osa = jarel.slice(i, i + PF_CFG.pakk), vastused;
+      try {
+        vastused = UrlFetchApp.fetchAll(osa.map(function (t) {
+          return { url: 'https://query2.finance.yahoo.com/v10/finance/quoteSummary/' + encodeURIComponent(t) + '?modules=topHoldings,quoteType&crumb=' + encodeURIComponent(cr.crumb),
+                   muteHttpExceptions: true, headers: { Cookie: cr.cookie, 'User-Agent': 'Mozilla/5.0' } };
+        }));
+      } catch (e) { osa.forEach(function (t) { tulem[t] = { ok: false, viga: String(e.message || e).slice(0, 60) }; uuesti.push(t); }); continue; }
+      for (var m = 0; m < osa.length; m++) {
+        var t = osa[m], kood = vastused[m].getResponseCode();
+        if (kood !== 200) { tulem[t] = { ok: false, viga: kood === 404 ? 'andmeid pole' : 'HTTP ' + kood }; if (kood === 401 || kood === 403 || kood === 429 || kood >= 500) uuesti.push(t); continue; }
+        try {
+          var j = JSON.parse(vastused[m].getContentText()), r = j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0];
+          if (!r) throw new Error('tühi vastus');
+          var tyyp = String((r.quoteType && r.quoteType.quoteType) || ''), hold = (r.topHoldings && r.topHoldings.holdings) || [];
+          var raw = function (x) { return x && typeof x === 'object' ? x.raw : x; };
+          var top = hold.map(function (h) { return { s: String(h.symbol || ''), n: String(h.holdingName || h.symbol || ''), w: Number(raw(h.holdingPercent)) }; })
+                        .filter(function (h) { return h.n && h.w > 0 && h.w < 1; });
+          tulem[t] = { ok: true, tyyp: tyyp, top: top };
+        } catch (e2) { tulem[t] = { ok: false, viga: String(e2.message || e2).slice(0, 60) }; }
+      }
+    }
+    jarel = uuesti;
+  }
+  return tulem;
+}
+
+/** Uuendab lehte "ETF sisu". sund = true küsib kohe, muidu ainult siis, kui viimasest korrast on üle 6 päeva. */
+function PF_uuendaEtfSisu_(sund) {
+  var prop = PropertiesService.getScriptProperties(), meta = {};
+  try { meta = JSON.parse(prop.getProperty('PF_ETF_META') || '{}'); } catch (e) {}
+  if (!sund && meta.ts && Date.now() - meta.ts < 6 * 86400000) return 'ETF sisu: värske (' + meta.d + ')';
+  var hinnad = PF_loeHinnad_(), omanik = PF_soovOmanikud_(hinnad), tickerid = [];
+  for (var t in omanik) if (omanik[t][0] !== 'jälgin' && PF_soovKolbab_(t, hinnad[t])) tickerid.push(t);
+  if (!tickerid.length) return 'ETF sisu: positsioone pole';
+  var toored = PF_tooEtfSisu_(tickerid), ss = SpreadsheetApp.getActiveSpreadsheet(), sh = ss.getSheetByName(PF_ETF_LEHT);
+  var vana = PF_loeEtfSisu_(), read = [], nyyd = new Date(), logi = [], fondid = 0, kasitsi = {};
+  // Käsitsi lisatud read (Allikas ei alga sõnaga Yahoo ega VANA) jäävad alles ja nende fonde Yahoost üle ei kirjutata.
+  for (var vt in vana) vana[vt].forEach(function (h) { if (!/^(Yahoo|VANA)/.test(h.a)) { kasitsi[vt] = true; read.push([vt, h.n, h.s, h.w, h.d, h.a]); } });
+  for (var i = 0; i < tickerid.length; i++) {
+    var tk = tickerid[i], u = toored[tk];
+    if (kasitsi[tk]) { fondid++; logi.push(tk + ': käsitsi'); continue; }
+    if (u && u.ok && u.top.length) {
+      fondid++;
+      u.top.forEach(function (h) { read.push([tk, h.n, h.s, PF_umarda_(h.w, 5), nyyd, 'Yahoo top 10']); });
+      logi.push(tk + ' ' + u.top.length + ' (' + PF_umarda_(u.top.reduce(function (a, h) { return a + h.w; }, 0) * 100, 1) + '%)');
+    } else if (u && u.ok) {
+      if (/ETF|MUTUALFUND/.test(u.tyyp)) logi.push(tk + ': ' + u.tyyp + ', sisu puudub');
+    } else {
+      if (vana[tk]) vana[tk].forEach(function (h) { read.push([tk, h.n, h.s, h.w, h.d, 'VANA – ' + (u ? u.viga : 'puudub')]); });
+      logi.push(tk + ': ' + (u ? u.viga : 'puudub'));
+    }
+  }
+  if (!sh) sh = ss.insertSheet(PF_ETF_LEHT);
+  sh.clearContents();
+  sh.getRange(1, 1, 1, PF_ETF_PAIS.length).setValues([PF_ETF_PAIS]).setFontWeight('bold');
+  if (read.length) { sh.getRange(2, 1, read.length, PF_ETF_PAIS.length).setValues(read); sh.getRange(2, 4, read.length, 1).setNumberFormat('0.00%'); }
+  sh.setFrozenRows(1);
+  prop.setProperty('PF_ETF_META', JSON.stringify({ ts: Date.now(), d: PF_paev_(nyyd) }));
+  return 'ETF sisu: ' + fondid + ' fondi' + (logi.length ? ' – ' + logi.join(', ') : '');
+}
+
+/** Käivita redaktorist: küsib ETF-ide sisu kohe ja näitab logis, milliste fondide kohta Yahoo andmeid andis. */
+function PF_proovEtfSisu() { var t = PF_uuendaEtfSisu_(true); Logger.log(t); return t; }
+
+/** Lehelt "ETF sisu": {ETF: [{n, s, w, d, k}]}. */
+function PF_loeEtfSisu_() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PF_ETF_LEHT), out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  var v = sh.getRange(2, 1, sh.getLastRow() - 1, PF_ETF_PAIS.length).getValues();
+  for (var i = 0; i < v.length; i++) {
+    var t = String(v[i][0]).trim(), w = PF_num_(v[i][3]);
+    if (!t || !(w > 0)) continue;
+    if (w > 1) w = PF_umarda_(w / 100, 6);                        // käsitsi sisestatud protsent
+    (out[t] = out[t] || []).push({ n: String(v[i][1]), s: String(v[i][2]), w: w, d: v[i][4], a: String(v[i][5] || 'käsitsi'), k: PF_ettevoteVoti_(v[i][2], v[i][1]) });
+  }
+  return out;
+}
+
+/** Läbivaade: kui palju raha on igas ettevõttes otse + ETF-ide kaudu. Lisab pos-ridadele .sisu (ETF) ja .lv (aktsia). */
+function PF_labivaade_(pos) {
+  var sisu = PF_loeEtfSisu_();
+  if (!Object.keys(sisu).length) return null;
+  var r2 = function (x) { return PF_umarda_(x, 2); }, by = {}, kokku = 0, etfV = 0, teada = 0, etfid = [];
+  var kirje = function (k, n) { return by[k] || (by[k] = { k: k, n: n, otse: 0, etf: [], kokku: 0, tk: [] }); };
+  pos.forEach(function (p) { if (p.v > 0) kokku += p.v; });
+  pos.forEach(function (p) {
+    if (!(p.v > 0)) return;
+    var s = sisu[p.t];
+    if (s && s.length) {
+      var katvus = 0; etfV += p.v;
+      p.sisu = s.map(function (h) { return { n: h.n, w: PF_umarda_(h.w, 5), v: r2(p.v * h.w) }; });
+      s.forEach(function (h) {
+        var e = kirje(h.k, h.n), v = p.v * h.w, olemas = null;
+        for (var q = 0; q < e.etf.length; q++) if (e.etf[q].t === p.t) olemas = e.etf[q];   // GOOGL + GOOG samas fondis
+        if (olemas) olemas.v += v; else e.etf.push({ t: p.t, kuva: p.kuva, v: v });
+        e.kokku += v; teada += v; katvus += h.w;
+      });
+      etfid.push({ t: p.t, kuva: p.kuva, v: r2(p.v), katvus: PF_umarda_(katvus, 4) });
+      return;
+    }
+    if (/^\^|=[XF]$|-USD$|-EUR$/.test(p.t) || p.g === 'Indeksifondid') {        // krüpto ja sisuta fondid ei ole ettevõtted
+      if (p.g === 'Indeksifondid') etfid.push({ t: p.t, kuva: p.kuva, v: r2(p.v), katvus: 0 });
+      return;
+    }
+    var e2 = kirje(PF_ettevoteVoti_(p.t, p.nimi || p.kuva), p.kuva);
+    if (!e2.tk.length) e2.n = p.kuva;                                           // oma kuvanimi on tuttavam
+    e2.tk.push(p.t); e2.otse += p.v; e2.kokku += p.v;
+  });
+  var read = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.kokku - a.kokku; });
+  read.forEach(function (e) {
+    e.etf.sort(function (a, b) { return b.v - a.v; });
+    if (e.tk.length && e.etf.length) {
+      var etfSum = e.etf.reduce(function (a, x) { return a + x.v; }, 0);
+      pos.forEach(function (p) { if (e.tk.indexOf(p.t) >= 0) p.lv = { etf: e.etf.map(function (x) { return { kuva: x.kuva, v: r2(x.v) }; }), etfKokku: r2(etfSum), kokku: r2(e.kokku), osa: kokku > 0 ? PF_umarda_(e.kokku / kokku, 4) : null }; });
+    }
+  });
+  var meta = {}; try { meta = JSON.parse(PropertiesService.getScriptProperties().getProperty('PF_ETF_META') || '{}'); } catch (e) {}
+  return {
+    read: read.slice(0, 40).map(function (e) { return { n: e.n, otse: r2(e.otse), etf: e.etf.map(function (x) { return { t: x.t, kuva: x.kuva, v: r2(x.v) }; }), kokku: r2(e.kokku), osa: kokku > 0 ? PF_umarda_(e.kokku / kokku, 4) : null, oma: e.tk.length > 0 }; }),
+    kokku: r2(kokku), etfV: r2(etfV), teada: r2(teada), etfid: etfid, uuendatud: meta.d || ''
+  };
 }
