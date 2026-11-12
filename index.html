@@ -442,6 +442,7 @@ function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k)||''; 
 var INSIDE = typeof google!=='undefined' && google.script && google.script.run;
 try{ S.kinni=JSON.parse(store('pf_kinni')||'{}')||{}; }catch(e){ S.kinni={}; }
 S.grp=store('pf_grp')==='grp'?'grp':'det';
+(function(){ var r=store('pf_range'), m=store('pf_mode'); if(r==='all'||r==='ytd'||r==='30') S.range=r; if(m==='v'||m==='h') S.mode=m; })();
 S.peida=store('pf_peida')==='1'; document.documentElement.classList.toggle('peida',S.peida); if($('btnPeida')) $('btnPeida').setAttribute('aria-pressed',S.peida);
 // Fear & Greed varukoopia samast GitHubi repost (GitHub Actions kirjutab data/fg.json), kui serveris seda veel pole.
 S.fgGh=null;
@@ -1471,7 +1472,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 15, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad. Äpi versioon 16, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); if($('sihidBox')) $('sihidBox').innerHTML=sihidHtml(d); }
@@ -1625,8 +1626,8 @@ document.addEventListener('click',function(ev){
     if(b.dataset.fold){ var fid=b.dataset.fold; if(S.kinni[fid]) delete S.kinni[fid]; else S.kinni[fid]=1; store('pf_kinni',JSON.stringify(S.kinni)); render(); return; }
     var seg=b.parentNode.id;
     if(seg==='nav'){ S.view=b.dataset.view; if(S.data) render(); else if(S.view==='seaded') fail(new Error('Andmeid pole veel laetud.')); else load(); window.scrollTo(0,0); return; }
-    if(seg==='segMode'){ S.mode=b.dataset.v; render(); return; }
-    if(seg==='segRange'){ S.range=b.dataset.v; render(); return; }
+    if(seg==='segMode'){ S.mode=b.dataset.v; store('pf_mode',S.mode); render(); return; }
+    if(seg==='segRange'){ S.range=b.dataset.v; store('pf_range',S.range); render(); return; }
     if(seg==='segBm'){ S.bm=+b.dataset.v; S.mode='h'; render(); return; }
     if(seg==='segGrp'){ S.grp=b.dataset.v; store('pf_grp',S.grp); S.openG=null; render(); return; }
     if(seg==='segLiik'){ S.lRange=b.dataset.v; [].forEach.call(b.parentNode.children,function(x){ x.setAttribute('aria-pressed',x===b); }); liikLae(); return; }
