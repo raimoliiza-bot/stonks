@@ -1,0 +1,22 @@
+name: Varuhinnad
+# Iga 30 min kell 06–22 Eesti aja järgi (UTC 4–20), ka nädalavahetusel krüpto pärast.
+# Midagi ei commitita – hinnad lähevad otse serverisse (secrets PF_URL ja PF_GH_VOTI).
+on:
+  schedule:
+    - cron: "11,41 4-20 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hinnad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python scripts/hinnad.py
+        env:
+          PF_URL: ${{ secrets.PF_URL }}
+          PF_GH_VOTI: ${{ secrets.PF_GH_VOTI }}
