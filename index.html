@@ -65,6 +65,7 @@
   .today b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em}
   .today span{font-size:13px}
   .chart-ctl{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:18px 0 8px;flex-wrap:wrap}
+  #segRange{display:flex;width:100%} #segRange button{flex:1;padding:6px 2px}
   .legend{display:flex;gap:16px;font-size:12.5px;color:var(--muted);margin:0 0 4px;min-height:18px;flex-wrap:wrap}
   .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
   .legend b{color:var(--text);font-weight:500;margin-left:5px}
@@ -446,7 +447,7 @@ function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k)||''; 
 var INSIDE = typeof google!=='undefined' && google.script && google.script.run;
 try{ S.kinni=JSON.parse(store('pf_kinni')||'{}')||{}; }catch(e){ S.kinni={}; }
 S.grp=store('pf_grp')==='grp'?'grp':'det';
-(function(){ var r=store('pf_range'), m=store('pf_mode'); if(r==='all'||r==='ytd'||r==='30') S.range=r; if(m==='v'||m==='h') S.mode=m; })();
+(function(){ var r=store('pf_range'), m=store('pf_mode'); if(['all','365','ytd','180','90','30'].indexOf(r)>=0) S.range=r; if(m==='v'||m==='h') S.mode=m; })();
 S.peida=store('pf_peida')==='1'; document.documentElement.classList.toggle('peida',S.peida); if($('btnPeida')) $('btnPeida').setAttribute('aria-pressed',S.peida);
 // Fear & Greed varukoopia samast GitHubi repost (GitHub Actions kirjutab data/fg.json), kui serveris seda veel pole.
 S.fgGh=null;
@@ -533,7 +534,8 @@ function rangePts(){
   var a=S.data.ajalugu||[]; if(!a.length) return a;
   var last=a[a.length-1].d;
   if(S.range==='ytd'){ var y=last.slice(0,4), out=[], prev=null; a.forEach(function(p){ if(p.d.slice(0,4)<y) prev=p; else out.push(p); }); return prev?[prev].concat(out):out; }
-  if(S.range==='30'){ var lim=ms(last)-30*864e5; return a.filter(function(p){ return ms(p.d)>=lim; }); }
+  var paevi={'30':30,'90':91,'180':182,'365':365}[S.range];
+  if(paevi){ var lim=ms(last)-paevi*864e5, o2=[], pr=null; a.forEach(function(p){ if(ms(p.d)<lim) pr=p; else o2.push(p); }); return pr&&o2.length&&ms(o2[0].d)>lim?[pr].concat(o2):o2; }
   return a;
 }
 function niceTicks(lo,hi,n){
@@ -1261,7 +1263,7 @@ function viewPortfell(d){
   h+=fold('seis','Portfelli väärtus','',
      '<div class="hero"><div class="hero-top"><div class="total">'+(S.peida?'••••••':nf0.format(Math.round(c.vaartus)))+'<small>€</small></div>'+
      '<div class="today '+cls(c.tana)+'"><b>'+eurS(c.tana)+'</b><span>'+pct(c.tanaPr)+' täna</span></div></div>'+
-     '<div class="chart-ctl">'+segHtml('segMode',[['v','Väärtus'],['h','Tootlus']],S.mode)+segHtml('segRange',[['all','Kõik'],['ytd','Sel aastal'],['30','30 päeva']],S.range)+'</div>'+
+     '<div class="chart-ctl">'+segHtml('segMode',[['v','Väärtus'],['h','Tootlus']],S.mode)+segHtml('segRange',[['30','30 p'],['90','3 k'],['180','6 k'],['ytd','YTD'],['365','1 a'],['all','Kõik']],S.range)+'</div>'+
      (vd.length>1?'<div style="margin:0 0 8px">'+segHtml('segBm',vd.map(function(x,i){ return [String(i),'vs '+esc(x.kuva)]; }),String(S.bm))+'</div>':'')+
      '<div class="legend" id="legend"></div><div id="chart"></div><div id="tblwrap"></div></div>',
      '<b class="gold">'+eur(c.vaartus)+'</b> <span class="'+cls(c.tana)+'">'+eurS(c.tana)+' ('+pct(c.tanaPr)+')</span>', true);
@@ -1406,7 +1408,10 @@ function viewYlevaade(d){
     var lahti=!o.pf&&!o.muu&&S.varaAva===o.n;
     var x=o.x||{}, kog=x.kogus>0;
     var lisa=o.pf?'<em class="'+cls(c.kasum)+'">kasum '+eurS(c.kasum)+'</em>'
-            :kog?'<em>'+qty(x.kogus)+' untsi, <span class="'+cls(x.kasum)+'">kasum '+eurS(x.kasum)+' ('+pct(x.kasumPr)+')</span></em>':'';
+            :kog?'<em>'+qty(x.kogus)+' untsi, <span class="'+cls(x.kasum)+'">kasum '+eurS(x.kasum)+' ('+pct(x.kasumPr)+')</span>'+
+              (has(x.hind)&&x.hind>0?(function(){ var us=(d.turg||[]).filter(function(m){ return m.t===(x.ticker||'GC=F')&&m.val==='USD'; })[0];
+                var eurT=nf0.format(Math.round(x.hind))+' €/oz · '+nf1.format(x.hind/UNTS_G)+' €/g', tp=us&&has(us.tanaPr)?us.tanaPr:x.tanaPr, ch=has(tp)?' <span class="'+cls(tp)+'">'+pct(tp)+' täna</span>':'';
+                return '<br>kulla hind '+(us?nf0.format(Math.round(us.hind))+' $/oz'+ch+' <span class="muted">('+eurT+')</span>':eurT+ch); })():'')+'</em>':'';
     return '<li class="'+(o.pf||o.muu?'':'clicky')+'"'+(o.pf||o.muu?'':' data-vara-ava="'+esc(o.n)+'" tabindex="0"')+'><i style="background:'+o.c+'"></i><span>'+esc(o.n)+lisa+'</span><b>'+eur(o.v)+'</b><small>'+nf1.format(o.v/kokku*100)+'%</small></li>'+
       (lahti?'<li class="edit"><div style="flex-basis:100%">'+segHtml('segVaraE',[['summa','Summa eurodes'],['kuld','Kuld untsides']],S.varaAvaTyyp||(kog?'kuld':'summa'))+'</div>'+((S.varaAvaTyyp||(kog?'kuld':'summa'))==='kuld'
           ?'<label>Kogus, untsi<input inputmode="decimal" id="veKogus" value="'+(kog?String(x.kogus).replace('.',','):'')+'"></label><label>Ostuhind, € untsi kohta<input inputmode="decimal" id="veOst" value="'+(kog?String(x.ost).replace('.',','):'')+'"></label>'+
@@ -1513,7 +1518,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 20, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 22, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); if($('sihidBox')) $('sihidBox').innerHTML=sihidHtml(d); }
