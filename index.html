@@ -1214,23 +1214,36 @@ function lvHtml(d){
     '<p class="cmp-note">'+note+'</p>',
     'suurim '+esc(esim.n)+' '+eur(esim.kokku)+(has(esim.osa)?' ('+nf1.format(esim.osa*100)+'%)':''));
 }
-// Sektorid läbivaatena: ETF-id oma sektorite jaotusega, aktsiad oma sektoriga; võrdlus VWRL-iga (kriips ribal).
-function sekHtml(d){
-  var sk=d.sektorid; if(!sk||!sk.read||!sk.read.length) return '';
-  var max=0; sk.read.forEach(function(r){ max=Math.max(max,r.osa||0,r.vwrl||0); }); max=max||1;
-  var rows=sk.read.map(function(r){
-    var vahe=has(r.vwrl)&&r.k!=='muu'&&r.k!=='kruepto'?(r.osa-r.vwrl)*100:null;
+// Jaotuse plokk (sektorid, regioonid, valuutad): riba = sinu osakaal, kriips = VWRL, ±pp = vahe maailmaindeksist.
+function jaotusHtml(id,pealkiri,alam,read,vordlus,note){
+  if(!read||!read.length) return '';
+  var max=0; read.forEach(function(r){ max=Math.max(max,r.osa||0,r.vwrl||0); }); max=max||1;
+  var eri=function(r){ return r.k==='muu'||r.k==='kruepto'; };
+  var rows=read.map(function(r){
+    var vahe=has(r.vwrl)&&!eri(r)?(r.osa-r.vwrl)*100:null;
     var vt=vahe===null?'':'<span class="'+(Math.abs(vahe)<2?'':(vahe>0?'sup':'sdn'))+'">'+(vahe>=0?'+':'−')+nf1.format(Math.abs(vahe))+' pp</span>';
-    return '<div class="n"><b style="font-weight:500">'+esc(r.n)+'</b>'+(vt?'<small>VWRL '+nf1.format(r.vwrl*100)+'% · '+vt+'</small>':'')+'</div>'+
+    return '<div class="n"><b style="font-weight:500">'+esc(r.n)+'</b>'+(vt?'<small>'+esc(vordlus)+' '+nf1.format(r.vwrl*100)+'% · '+vt+'</small>':'')+'</div>'+
       '<div class="v">'+nf1.format(r.osa*100)+'%<small>'+eur(r.v)+'</small></div>'+
       '<div class="lvbar sekbar"><i style="width:'+(r.osa/max*100).toFixed(2)+'%;background:'+(r.k==='muu'?'var(--muted)':'#60a5fa')+'"></i>'+
-      (has(r.vwrl)&&r.vwrl>0&&r.k!=='muu'?'<b style="left:'+(r.vwrl/max*100).toFixed(2)+'%"></b>':'')+'</div>';
+      (has(r.vwrl)&&r.vwrl>0&&!eri(r)?'<b style="left:'+(r.vwrl/max*100).toFixed(2)+'%"></b>':'')+'</div>';
   }).join('');
-  var top=sk.read.filter(function(r){ return r.k!=='muu'; })[0];
-  return fold('sektorid','Sektorid',' <p>kogu portfell läbivaatena</p>',
-    (sk.vordlus?'<div class="lv-lg"><span><i style="background:#60a5fa"></i>sinu portfell</span><span><i style="background:var(--text);width:2px"></i>'+esc(sk.vordlus)+' (maailm)</span></div>':'')+
-    '<div class="lv">'+rows+'</div><p class="cmp-note">Fondide sektorid on Yahoo andmetest, aktsiatel nende enda sektor. „pp“ on protsendipunktid: kui palju sinu osakaal erineb maailmaindeksist. Sektor on teada '+nf0.format((sk.katvus||0)*100)+'% väärtusest; ülejäänu on „Muu / teadmata“. Käsitsi saab parandada Sheeti lehel „Sektorid“.</p>',
+  var top=read.filter(function(r){ return r.k!=='muu'; })[0];
+  return fold(id,pealkiri,' <p>'+alam+'</p>',
+    (vordlus?'<div class="lv-lg"><span><i style="background:#60a5fa"></i>sinu portfell</span><span><i style="background:var(--text);width:2px"></i>'+esc(vordlus)+' (maailm)</span></div>':'')+
+    '<div class="lv">'+rows+'</div><p class="cmp-note">'+note+'</p>',
     top?'suurim '+esc(top.n)+' '+nf0.format(top.osa*100)+'%':'');
+}
+function sekHtml(d){
+  var sk=d.sektorid; if(!sk) return '';
+  return jaotusHtml('sektorid','Sektorid','kogu portfell läbivaatena',sk.read,sk.vordlus,
+    'Fondide sektorid on Yahoo andmetest, aktsiatel nende enda sektor. „pp“ on protsendipunktid: kui palju sinu osakaal erineb maailmaindeksist. Sektor on teada '+nf0.format((sk.katvus||0)*100)+'% väärtusest; ülejäänu on „Muu / teadmata“. Käsitsi saab parandada Sheeti lehel „Sektorid“.');
+}
+function regHtml(d){
+  var rg=d.regioonid; if(!rg) return '';
+  return jaotusHtml('regioonid','Regioonid','kus ettevõtted asuvad',rg.regioonid,rg.vordlus,
+    'Aktsiatel ettevõtte asukohariik (Yahoo), fondidel jaotus fondi väljastaja andmetest (Vanguard 09/2026, justETF 08/2026), väikesed riigid osaliselt hinnanguliselt. Regioon on teada '+nf0.format((rg.katvus||0)*100)+'% väärtusest. Käsitsi saab parandada Sheeti lehel „Regioonid“ (Allikas = käsitsi).')+
+    jaotusHtml('valuutad','Valuutad','millest väärtus sõltub',rg.valuutad,rg.vordlus,
+    'Näitab ettevõtete koduvaluutat, mitte seda, mis valuutas fondi ostsid: VWRL on noteeritud eurodes, aga ~60% selle väärtusest sõltub dollarist. Kui USD nõrgeneb euro suhtes, langeb selle osa väärtus eurodes. Põhjamaad = Rootsi, Taani, Norra kroon.');
 }
 // Positsiooni avamisel: aktsial ETF-ide kaudu tulev osa, ETF-il tema suurimad positsioonid eurodes.
 function lvDet(p){
@@ -1266,6 +1279,7 @@ function viewPortfell(d){
   h+=fold('pos','Positsioonid',segHtml('segGrp',[['det','Detailne'],['grp','Grupid']],S.grp),'<table id="ptable"></table>'+(S.grp==='grp'?'<div id="sihidBox"></div>':''),S.grp==='grp'?gArv+' gruppi, '+d.pos.length+' väärtpaberit':d.pos.length+' väärtpaberit');
   h+=lvHtml(d);
   h+=sekHtml(d);
+  h+=regHtml(d);
 
   var sm=d.soovMuut||[];
   if(sm.length) h+=fold('soovmuut','Analüütikute muutused','<p>viimased 30 päeva</p>','<ul class="tx">'+sm.map(function(m){ return '<li><time>'+kp(m.d,true)+'</time><div><b style="font-weight:500">'+esc(m.kuva)+'</b><small style="margin-top:3px">'+rkMuutTekst(m)+'</small></div><div></div></li>'; }).join('')+'</ul>',sm.length+' muutust, viimane '+esc(sm[0].kuva));
@@ -1496,7 +1510,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 18, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 19, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); if($('sihidBox')) $('sihidBox').innerHTML=sihidHtml(d); }

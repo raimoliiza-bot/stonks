@@ -508,12 +508,13 @@ function PF_andmed_(soov) {
   var labivaade = null, sektorid = null;
   try { labivaade = PF_labivaade_(pos); } catch (lve) { labivaade = null; }
   try { sektorid = PF_sektorid_(pos); } catch (ske) { sektorid = null; }
+  var regioonid = null; try { regioonid = PF_regioonid_(pos); } catch (rge) { regioonid = null; }
 
   var uuendatud = PF_viimaneUuendus_(hinnad), eilne = s.aktsiad - s.tana;
   return {
     portfellid: portfellid, portfell: nimi, valik: koos ? '*' : nimi, koos: koos,
     uuendatud: uuendatud ? Utilities.formatDate(uuendatud, PF_CFG.ajavoond, 'dd.MM.yyyy HH:mm') : '',
-    serveriVersioon: 15, vanu: vanu, hinnaAllikad: allikad,
+    serveriVersioon: 16, vanu: vanu, hinnaAllikad: allikad,
     hinnadVanad: (function () { try { var om = {}; pos.forEach(function (x) { om[x.t] = true; }); var nn = new Date();
       return PF_vanadHinnad_(hinnad, om, nn).map(function (x) { return { kuva: x.kuva, u: x.u ? Utilities.formatDate(x.u, PF_CFG.ajavoond, 'dd.MM HH:mm') : '' }; }); } catch (ve) { return []; } })(), hinnata: s.puudu, pinOlemas: !!PF_PIN && String(PF_PIN).length >= 4,
     kokku: {
@@ -537,7 +538,7 @@ function PF_andmed_(soov) {
                teemad: se.teemad, puhver: se.puhver };
     })(),
     hairekell: hairekell, kalender: kalender, vordlusAlt: vordlusAlt, sihid: sihid,
-    labivaade: labivaade, sektorid: sektorid,
+    labivaade: labivaade, sektorid: sektorid, regioonid: regioonid,
     kullaSiht: (function () { try { return PF_loeKullaSiht_(koos ? nimed : [nimi]); } catch (ke) { return null; } })()
   };
 }
@@ -2185,7 +2186,7 @@ function PF_tooEtfSisu_(tickerid) {
           var sekt = {};                                          // fondil sektorite jaotus, aktsial üks sektor
           ((r.topHoldings && r.topHoldings.sectorWeightings) || []).forEach(function (o) { for (var k in o) { var w = Number(raw(o[k])); if (w > 0) sekt[PF_sektorVoti_(k)] = (sekt[PF_sektorVoti_(k)] || 0) + w; } });
           if (!Object.keys(sekt).length && r.assetProfile && r.assetProfile.sector) sekt[PF_sektorVoti_(r.assetProfile.sector)] = 1;
-          tulem[t] = { ok: true, tyyp: tyyp, top: top, sekt: sekt };
+          tulem[t] = { ok: true, tyyp: tyyp, top: top, sekt: sekt, riik: (r.assetProfile && r.assetProfile.country) || '' };
         } catch (e2) { tulem[t] = { ok: false, viga: String(e2.message || e2).slice(0, 60) }; }
       }
     }
@@ -2228,6 +2229,7 @@ function PF_uuendaEtfSisu_(sund) {
   prop.setProperty('PF_ETF_META', JSON.stringify({ ts: Date.now(), d: PF_paev_(nyyd) }));
   var sekLogi = '';
   try { sekLogi = PF_kirjutaSektorid_(tickerid, toored, nyyd); } catch (se) { sekLogi = 'sektorid: ' + se.message; }
+  try { sekLogi += ', ' + PF_kirjutaRegioonid_(tickerid, toored, nyyd); } catch (re) { sekLogi += ', regioonid: ' + re.message; }
   return 'ETF sisu: ' + fondid + ' fondi' + (logi.length ? ' – ' + logi.join(', ') : '') + (sekLogi ? '; ' + sekLogi : '');
 }
 
@@ -2548,4 +2550,115 @@ function PF_sektorid_(pos) {
   var read = Object.keys(by).map(function (k) { return { k: k, n: PF_SEKTOR_NIMI[k] || k, v: PF_umarda_(by[k], 2), osa: PF_umarda_(by[k] / kokku, 4), vwrl: vw ? PF_umarda_(vrd[k] || 0, 4) : null }; })
     .sort(function (a, b) { return (a.k === 'muu') - (b.k === 'muu') || b.v - a.v; });
   return { read: read, kokku: PF_umarda_(kokku, 2), katvus: PF_umarda_(teada / kokku, 4), vordlus: vw ? 'VWRL' : '' };
+}
+
+/* ================================================================ regioonid ja valuutad */
+/*
+ * Ühik = piirkond, millel on üks valuuta (nt Euroala → EUR, Ühendkuningriik → GBP). Regioonide plokk liidab ühikud
+ * suuremateks piirkondadeks, valuutade plokk näitab ühikute valuutat. Aktsiad saavad riigi Yahoo assetProfile'ist,
+ * fondid vaikimisi jaotuse allolevast tabelist (allikad: Vanguard 30.09.2026, justETF 31.08.2026; "muu" osa hinnanguline).
+ * Leht "Regioonid" on käsitsi parandatav: rida Allikaga "käsitsi" jääb alles ja selle tickeri vaikeväärtusi ei kirjutata üle.
+ */
+var PF_REG_LEHT = 'Regioonid';
+var PF_REG_PAIS = ['Ticker', 'Piirkond', 'Kaal', 'Uuendatud', 'Allikas'];
+var PF_REG_YHIK = {   // võti: [nimi lehel, regioon, valuuta]
+  US: ['USA', 'pohja_ameerika', 'USD'], CA: ['Kanada', 'pohja_ameerika', 'CAD'],
+  EZ: ['Euroala', 'euroopa', 'EUR'], GB: ['Ühendkuningriik', 'euroopa', 'GBP'], CH: ['Šveits', 'euroopa', 'CHF'],
+  NORD: ['Põhjamaad (v.a Soome)', 'euroopa', 'SEK/DKK/NOK'], EUMUU: ['Muu Euroopa', 'euroopa', 'muu Euroopa'],
+  JP: ['Jaapan', 'jaapan', 'JPY'], ASIA: ['Aasia (v.a Jaapan ja India)', 'aasia', 'Aasia valuutad'], IN: ['India', 'india', 'INR'],
+  OC: ['Austraalia ja Uus-Meremaa', 'okeaania', 'AUD/NZD'], LATAM: ['Ladina-Ameerika', 'latam', 'Ladina-Ameerika'], MUU: ['Muu', 'muu', 'muu']
+};
+var PF_REGIOON_NIMI = { pohja_ameerika: 'Põhja-Ameerika', euroopa: 'Euroopa', jaapan: 'Jaapan', aasia: 'Aasia (v.a Jaapan, India)', india: 'India',
+  okeaania: 'Austraalia ja Okeaania', latam: 'Ladina-Ameerika', muu: 'Muu / teadmata', kruepto: 'Krüpto' };
+var PF_REG_VAIKIMISI = {   // fondi jaotus ühikutes; summa 1
+  'VWRL': { allikas: 'Vanguard 30.09.2026', j: { US: 0.6224, CA: 0.0291, EZ: 0.0734, GB: 0.0312, CH: 0.0188, NORD: 0.015, JP: 0.0606, ASIA: 0.1001, IN: 0.015, OC: 0.0158, LATAM: 0.008, MUU: 0.0106 } },
+  'EUN1': { allikas: 'justETF 31.08.2026', j: { GB: 0.2352, CH: 0.1807, EZ: 0.5241, NORD: 0.06 } },
+  'EXSH': { allikas: 'justETF 31.08.2026', j: { GB: 0.2851, EZ: 0.6029, NORD: 0.072, EUMUU: 0.04 } },
+  'IQQF': { allikas: 'justETF 31.08.2026', j: { ASIA: 1 } },
+  'IQQX': { allikas: 'justETF 31.08.2026', j: { OC: 0.4589, ASIA: 0.4506, JP: 0.0905 } },
+  'FLXI': { allikas: 'Franklin FTSE India', j: { IN: 1 } }
+};
+var PF_RIIK_YHIK = {
+  'united states': 'US', 'usa': 'US', 'canada': 'CA', 'united kingdom': 'GB', 'jersey': 'GB', 'guernsey': 'GB', 'isle of man': 'GB', 'switzerland': 'CH',
+  'denmark': 'NORD', 'sweden': 'NORD', 'norway': 'NORD', 'iceland': 'NORD', 'japan': 'JP', 'india': 'IN', 'australia': 'OC', 'new zealand': 'OC',
+  'china': 'ASIA', 'hong kong': 'ASIA', 'taiwan': 'ASIA', 'south korea': 'ASIA', 'korea': 'ASIA', 'singapore': 'ASIA', 'thailand': 'ASIA', 'malaysia': 'ASIA',
+  'indonesia': 'ASIA', 'philippines': 'ASIA', 'vietnam': 'ASIA', 'macau': 'ASIA',
+  'brazil': 'LATAM', 'mexico': 'LATAM', 'argentina': 'LATAM', 'chile': 'LATAM', 'colombia': 'LATAM', 'peru': 'LATAM', 'uruguay': 'LATAM',
+  'poland': 'EUMUU', 'czech republic': 'EUMUU', 'czechia': 'EUMUU', 'hungary': 'EUMUU', 'romania': 'EUMUU', 'bulgaria': 'EUMUU', 'turkey': 'MUU'
+};
+['germany', 'france', 'netherlands', 'spain', 'italy', 'ireland', 'belgium', 'finland', 'austria', 'portugal', 'luxembourg', 'greece', 'estonia',
+ 'latvia', 'lithuania', 'slovakia', 'slovenia', 'croatia', 'malta', 'cyprus'].forEach(function (r) { PF_RIIK_YHIK[r] = 'EZ'; });
+
+/** Ühiku võti lehel olevast nimest või võtmest. */
+function PF_regYhik_(x) {
+  var s = String(x || '').trim();
+  if (PF_REG_YHIK[s.toUpperCase()]) return s.toUpperCase();
+  for (var k in PF_REG_YHIK) if (PF_REG_YHIK[k][0].toLowerCase() === s.toLowerCase()) return k;
+  return PF_RIIK_YHIK[s.toLowerCase()] || 'MUU';
+}
+function PF_regVaikimisi_(t) { return PF_REG_VAIKIMISI[String(t).toUpperCase().replace(/\.[A-Z]{1,3}$/, '')] || null; }
+
+/** Kirjutab lehe "Regioonid": käsitsi read alles, fondid vaikejaotusest, aktsiad Yahoo riigist. */
+function PF_kirjutaRegioonid_(tickerid, toored, nyyd) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet(), sh = ss.getSheetByName(PF_REG_LEHT), read = [], kasitsi = {}, vana = PF_loeRegioonid_(), mitu = 0;
+  for (var vt in vana) vana[vt].forEach(function (x) { if (!/^(Yahoo|VANA|vaikimisi)/.test(x.a)) { kasitsi[vt] = true; read.push([vt, PF_REG_YHIK[x.k][0], x.w, x.d, x.a]); } });
+  tickerid.forEach(function (t) {
+    if (kasitsi[t] || /-USD$|-EUR$|=X$|=F$|^\^/.test(t)) return;
+    var vk = PF_regVaikimisi_(t), u = toored[t];
+    if (vk) { mitu++; Object.keys(vk.j).forEach(function (k) { read.push([t, PF_REG_YHIK[k][0], vk.j[k], nyyd, 'vaikimisi – ' + vk.allikas]); }); }
+    else if (u && u.ok && u.riik && !/ETF|MUTUALFUND/.test(u.tyyp)) { mitu++; read.push([t, PF_REG_YHIK[PF_regYhik_(u.riik)][0], 1, nyyd, 'Yahoo (' + u.riik + ')']); }
+    else if (vana[t]) vana[t].forEach(function (x) { read.push([t, PF_REG_YHIK[x.k][0], x.w, x.d, 'VANA']); });
+  });
+  if (!sh) sh = ss.insertSheet(PF_REG_LEHT);
+  sh.clearContents();
+  sh.getRange(1, 1, 1, PF_REG_PAIS.length).setValues([PF_REG_PAIS]).setFontWeight('bold');
+  if (read.length) { sh.getRange(2, 1, read.length, PF_REG_PAIS.length).setValues(read); sh.getRange(2, 3, read.length, 1).setNumberFormat('0.0%'); }
+  sh.setFrozenRows(1);
+  return 'regioonid ' + mitu + ' tickerile';
+}
+
+/** Lehelt "Regioonid": {ticker: [{k (ühik), w, d, a}]}. */
+function PF_loeRegioonid_() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PF_REG_LEHT), out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  var v = sh.getRange(2, 1, sh.getLastRow() - 1, PF_REG_PAIS.length).getValues();
+  for (var i = 0; i < v.length; i++) {
+    var t = String(v[i][0]).trim(), w = PF_num_(v[i][2]);
+    if (!t || !String(v[i][1]).trim() || !(w > 0)) continue;
+    if (w > 1) w = PF_umarda_(w / 100, 6);
+    (out[t] = out[t] || []).push({ k: PF_regYhik_(v[i][1]), w: w, d: v[i][3], a: String(v[i][4] || 'käsitsi') });
+  }
+  return out;
+}
+
+/** Regioonide ja valuutade jaotus läbivaatena + võrdlus VWRL-iga. */
+function PF_regioonid_(pos) {
+  var reg = PF_loeRegioonid_(), yh = {}, kokku = 0, teada = 0, kr = 0;
+  if (!Object.keys(reg).length) return null;
+  pos.forEach(function (p) {
+    if (!(p.v > 0)) return;
+    kokku += p.v;
+    if (/-USD$|-EUR$/.test(p.t)) { kr += p.v; teada += p.v; return; }
+    var r = reg[p.t], sum = 0;
+    if (!r) { var vk = PF_regVaikimisi_(p.t); if (vk) r = Object.keys(vk.j).map(function (k) { return { k: k, w: vk.j[k] }; }); }
+    if (r) r.forEach(function (x) { yh[x.k] = (yh[x.k] || 0) + p.v * x.w; sum += x.w; });
+    sum = Math.min(sum, 1); teada += p.v * sum;
+    if (sum < 0.999) yh.MUU = (yh.MUU || 0) + p.v * (1 - sum);
+  });
+  if (!(kokku > 0)) return null;
+  var vw = reg['VWRL.AS'] || reg['VWRL.L'] || reg['VWRL.MI'] || null, vyh = {};
+  if (!vw) { var vd = PF_REG_VAIKIMISI.VWRL; vw = Object.keys(vd.j).map(function (k) { return { k: k, w: vd.j[k] }; }); }
+  vw.forEach(function (x) { vyh[x.k] = (vyh[x.k] || 0) + x.w; });
+  var koonda = function (indeks) {                                 // indeks 1 = regioon, 2 = valuuta
+    var by = {}, vb = {};
+    Object.keys(yh).forEach(function (k) { var g = PF_REG_YHIK[k][indeks]; by[g] = (by[g] || 0) + yh[k]; });
+    Object.keys(vyh).forEach(function (k) { var g = PF_REG_YHIK[k][indeks]; vb[g] = (vb[g] || 0) + vyh[k]; });
+    if (kr > 0) by.kruepto = kr;
+    var muu = indeks === 1 ? 'muu' : 'muu';
+    return Object.keys(by).map(function (g) {
+      return { k: g, n: indeks === 1 ? (PF_REGIOON_NIMI[g] || g) : (g === 'kruepto' ? 'Krüpto' : g === 'muu' ? 'Muu / teadmata' : g),
+               v: PF_umarda_(by[g], 2), osa: PF_umarda_(by[g] / kokku, 4), vwrl: PF_umarda_(vb[g] || 0, 4) };
+    }).sort(function (a, b) { return (a.k === muu) - (b.k === muu) || b.v - a.v; });
+  };
+  return { regioonid: koonda(1), valuutad: koonda(2), kokku: PF_umarda_(kokku, 2), katvus: PF_umarda_(teada / kokku, 4), vordlus: 'VWRL' };
 }
