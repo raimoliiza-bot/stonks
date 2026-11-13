@@ -202,6 +202,7 @@
   .vrd small{display:block;color:var(--muted);font-size:12px}
   .sihid{margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
   .sihid table td,.sihid table th{padding:7px 4px;font-size:13.5px}
+  .sihid input.uusgrupp{width:130px;text-align:left}
   .sihid input{width:58px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 7px;font-size:15px;text-align:right}
   .jaota{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;font-size:13.5px;color:var(--muted)}
   .jaota input{width:96px}
@@ -743,10 +744,12 @@ function sihidHtml(d){
   var sSum=Object.keys(sihid).reduce(function(a,g){ return a+sihid[g]; },0);
   var rows=nimed.map(function(g){ var x=by[g]||{v:0}, osa=tot>0?(x.v||0)/tot:0, si=sihid[g], vahe=has(si)?(x.v||0)-si*tot:null;
     return '<tr><td class="nm" style="text-align:left">'+esc(g)+'</td><td>'+nf1.format(osa*100)+'%</td><td>'+(muuda?'<input data-siht="'+esc(g)+'" inputmode="decimal" value="'+(has(si)?String(+(si*100).toFixed(1)).replace('.',','):'')+'" aria-label="Siht '+esc(g)+'">':has(si)?nf0.format(si*100)+'%':'–')+'</td><td style="color:'+(has(vahe)?(Math.abs(vahe)<tot*0.02?'var(--muted)':vahe>0?'#f4a072':'var(--blue)'):'var(--muted)')+'">'+(has(vahe)?(Math.abs(vahe)<tot*0.02?'sihil':(vahe>0?'üle ':'alla ')+eur(Math.abs(vahe))):'')+'</td></tr>'; }).join('');
+  // Uus grupp, kus veel positsioone pole (nt Dividendid): nimi peab hiljem positsioonidele pandud grupiga täpselt kokku minema.
+  if(muuda) rows+='<tr><td style="text-align:left"><input id="sihtUusNimi" class="uusgrupp" maxlength="24" placeholder="+ uus grupp" aria-label="Uue grupi nimi"></td><td>–</td><td><input id="sihtUusVal" inputmode="decimal" aria-label="Uue grupi siht"></td><td></td></tr>';
   var h='<div class="sihid"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><b style="font-size:14.5px;font-weight:600">Sihtjaotus</b>'+
     (muuda?'<span><button type="button" class="btn primary" id="sihtSalv" style="padding:5px 12px;font-size:13px">Salvesta</button> <button type="button" class="btn" id="sihtLoobu" style="padding:5px 12px;font-size:13px">Loobu</button></span>':'<button type="button" class="btn" id="sihtMuuda" style="padding:5px 12px;font-size:13px">'+(Object.keys(sihid).length?'Muuda sihte':'Pane sihid')+'</button>')+'</div>'+
     '<table style="margin-top:6px"><thead><tr><th style="text-align:left">Grupp</th><th>Praegu</th><th>Siht</th><th>Vahe</th></tr></thead><tbody>'+rows+'</tbody></table>'+
-    (muuda?'<p class="cmp-note">Sihid protsentides väärtpaberite väärtusest (ilma vaba rahata). Kokku kuni 100%; tühi = sihti pole.</p>':'');
+    (muuda?'<p class="cmp-note">Sihid protsentides väärtpaberite väärtusest (ilma vaba rahata). Kokku kuni 100%; tühi = sihti pole. Uue grupi (nt „Dividendid“) saad lisada viimasel real – kasuta hiljem positsioonidel täpselt sama nime.</p>':'');
   if(!muuda&&Object.keys(sihid).length){
     var summa=num(store('pf_uusraha')||'1500'); if(!(summa>0)) summa=1500;
     h+='<div class="jaota">Järgmine sissemakse <input id="uusRaha" inputmode="decimal" value="'+esc(String(summa))+'" aria-label="Uus raha eurodes"> € <ul id="jaotus">'+jaotusRead(d,summa)+'</ul></div>';
@@ -763,7 +766,7 @@ function jaotusRead(d,summa){
   var r=Object.keys(jaot).filter(function(g){ return jaot[g]>=1; }).sort(function(a,b){ return jaot[b]-jaot[a]; });
   if(!r.length) return '<li><span>Kõik grupid on sihil – pane raha suurimasse gruppi.</span></li>';
   return r.map(function(g){ var x=by[g], top=x?x.liikmed.slice().sort(function(a,b){ return (b.v||0)-(a.v||0); })[0]:null;
-    return '<li><span>'+esc(g)+(top?' <small class="muted">nt '+esc(top.kuva)+(has(top.hind)&&top.hind>0&&top.val==='EUR'?' ≈ '+Math.floor(jaot[g]/top.hind)+' tk':'')+'</small>':'')+'</span><b style="font-weight:500">'+eur(jaot[g])+'</b></li>'; }).join('');
+    return '<li><span>'+esc(g)+(!x?' <small class="muted">uus grupp – vali fond</small>':'')+(top?' <small class="muted">nt '+esc(top.kuva)+(has(top.hind)&&top.hind>0&&top.val==='EUR'?' ≈ '+Math.floor(jaot[g]/top.hind)+' tk':'')+'</small>':'')+'</span><b style="font-weight:500">'+eur(jaot[g])+'</b></li>'; }).join('');
 }
 // ---------- eesmärk: liitintressi kalkulaator ----------
 var EE_VAIK={eeAlgus:'',eeKuus:'1500',eeTootlus:'7',eeSiht:'500000',eeVanus:'',eeSihtVanus:'',eeAastaid:'12',eeDiv:'4',eeInfl:'2,5',eeKasv:'0'};
@@ -1510,7 +1513,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 19, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 20, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); if($('sihidBox')) $('sihidBox').innerHTML=sihidHtml(d); }
@@ -1705,7 +1708,10 @@ document.addEventListener('click',function(ev){
     if(b.id==='sihtSalv'||b.dataset.ostuaeg){ var sp2=store('pf_pin');
       if(S.demo){ toast('Need on näidisandmed – siin ei salvestata.'); return; } if(!sp2){ toast('Sisesta PIN vahekaardil Seaded („Jäta meelde“)'); return; }
       var tegevus2, q2;
-      if(b.id==='sihtSalv'){ var sh2={}; [].forEach.call(document.querySelectorAll('[data-siht]'),function(inp){ var v2=num(inp.value); if(v2>0) sh2[inp.dataset.siht]=v2; }); tegevus2='sihid'; q2={pin:sp2,p:S.p,sihid:sh2}; }
+      if(b.id==='sihtSalv'){ var sh2={}; [].forEach.call(document.querySelectorAll('[data-siht]'),function(inp){ var v2=num(inp.value); if(v2>0) sh2[inp.dataset.siht]=v2; });
+        var un=$('sihtUusNimi')?$('sihtUusNimi').value.trim():'', uv=$('sihtUusVal')?num($('sihtUusVal').value):NaN;
+        if(un&&!(uv>0)){ toast('Pane uuele grupile ka siht'); return; } if(un&&uv>0) sh2[un]=uv;
+        tegevus2='sihid'; q2={pin:sp2,p:S.p,sihid:sh2}; }
       else { if(!$('oaIn').value){ toast('Vali kuupäev'); return; } tegevus2='ostuaeg'; q2={pin:sp2,p:S.p,t:b.dataset.ostuaeg,d:$('oaIn').value}; }
       setBusy(true); api(tegevus2,q2,function(d){ setBusy(false); S.sihtMuuda=false; render(d); toast(d.teade||'Salvestatud'); },function(e){ setBusy(false); toast(/Tundmatu tegevus/.test(e.message||'')?'Server on vana. Uuenda Apps Scripti kood ja tee New version.':(e.message||String(e))); }); return; }
     if(b.dataset.eediv){ $('eeDiv').value=b.dataset.eediv; store(eeKey('eeDiv'),b.dataset.eediv); eeChips(); eeUuenda(); return; }
