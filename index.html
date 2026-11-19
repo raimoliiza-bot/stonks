@@ -929,7 +929,7 @@ function kuldValikNaita(){
   b.innerHTML=M.map(function(m){ var vt=r.hetk?m.oz*r.hetk.e:null, k=has(vt)&&m.eur>0?vt/m.eur-1:null;
     return '<div class="range" style="margin-top:8px">🪙 <b style="color:var(--text);font-weight:500">'+esc(m.nimi)+'</b> · '+kp(m.d)+'<br>'+(S.peida?'•••':nf2.format(m.oz))+' oz, makstud '+eur(m.eur)+
       (has(m.spotE)?' (turuhind siis '+nf0.format(Math.round(m.spotE))+' €/oz · '+nf0.format(Math.round(m.spotU))+' $/oz'+(has(m.preemia)&&m.eur>0?', preemia '+pct(m.preemia/m.eur):'')+')':'')+
-      '<br>Täna '+eur(vt)+' · <span class="'+cls(k)+'">'+pct(k)+'</span></div>'; }).join('');
+      '<br>Täna '+eur(vt)+' · <span class="'+cls(k)+'">'+pct(k)+(has(vt)&&m.eur>0?' ('+eurS(vt-m.eur)+')':'')+'</span></div>'; }).join('');
 }
 
 function viewEesmark(d){
@@ -1649,7 +1649,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='kuld') h+=viewKuld(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 25, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 26, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
   if(S.view==='kuld') kuldLae();
