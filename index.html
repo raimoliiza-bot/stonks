@@ -376,6 +376,8 @@
   dialog .btn.primary{width:100%;padding:12px;border-radius:var(--r-md);font-size:15px}
   [hidden]{display:none!important}
 
+  #lbar{position:fixed;left:0;top:0;height:3px;width:0;background:var(--accent,#4f8cff);z-index:9999;opacity:0;transition:width .3s linear,opacity .4s;pointer-events:none;box-shadow:0 0 6px var(--accent,#4f8cff)}
+  #lbar.on{opacity:1}
   #toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);background:var(--raised);border:1px solid var(--line);
     padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;box-shadow:0 10px 30px #0009;max-width:calc(100vw - 32px)}
   #toast.on{opacity:1;transform:translate(-50%,0)}
@@ -437,7 +439,7 @@
     <button class="btn primary" id="bSave" type="submit">Salvesta</button>
   </form>
 </dialog>
-<div id="toast" role="status"></div>
+<div id="lbar" aria-hidden="true"></div><div id="toast" role="status"></div>
 
 <script>
 // ============================================================
@@ -462,8 +464,26 @@ try{ fetch('data/fg.json?t='+Date.now(),{cache:'no-store'}).then(function(r){ re
 function apiUrl(){ return (store('pf_api')||API_URL||'').trim(); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
+// ---------- laadimisriba: hinnang eelmiste laadimiste kestusest (selles seadmes) ----------
+var LB={n:0,t0:0,est:6000,timer:null};
+function lbHinnang(tg){ var x=+store('pf_lt_'+tg); return x>300&&x<60000?x:(tg==='kuld'?8000:6000); }
+function lbStart(tg){
+  if(!LB.n){ LB.t0=Date.now(); LB.est=lbHinnang(tg); var el=$('lbar'); el.style.transition='none'; el.style.width='0'; void el.offsetWidth; el.style.transition=''; el.classList.add('on');
+    clearInterval(LB.timer); LB.timer=setInterval(function(){ var t=Date.now()-LB.t0, f=1-Math.exp(-1.6*t/LB.est); $('lbar').style.width=(Math.min(f,0.95)*100).toFixed(1)+'%';
+      var s=$('lbAeg'); if(s){ var jaak=Math.max(0,Math.round((LB.est-t)/1000)); s.textContent=jaak>0?' · umbes '+jaak+' s':' · kohe…'; } },200); }
+  LB.n++; return Date.now();
+}
+function lbStop(tg,t0,okk){
+  if(okk){ var kulus=Date.now()-t0, vana=lbHinnang(tg); store('pf_lt_'+tg,String(Math.round(+store('pf_lt_'+tg)?vana*0.6+kulus*0.4:kulus))); }
+  LB.n=Math.max(0,LB.n-1); if(LB.n) return;
+  clearInterval(LB.timer); var el=$('lbar'); el.style.width='100%'; setTimeout(function(){ if(!LB.n){ el.classList.remove('on'); setTimeout(function(){ if(!LB.n) el.style.width='0'; },400); } },250);
+}
+function lbTekst(tg){ return '<span id="lbAeg"> · umbes '+Math.round(lbHinnang(tg)/1000)+' s</span>'; }
+
 // ---------- server ----------
 function api(tegevus, q, ok, fail, katse){
+  if(!katse&&!api.sees){ var lt0=lbStart(tegevus), ok0=ok, fail0=fail;
+    ok=function(r){ lbStop(tegevus,lt0,true); ok0(r); }; fail=function(e){ lbStop(tegevus,lt0,false); fail0(e); }; }
   var done = function(r){ if (r && r.viga) fail(new Error(r.viga)); else ok(r); };
   // Google annab koormuse all vahel vealehe andmete asemel: lugemist proovitakse 3 s pärast üks kord uuesti.
   var lugemine = tegevus==='andmed'||tegevus==='varskenda';
@@ -815,7 +835,9 @@ S.kValik=null;
 function kuldLae(){
   var key=S.p||'';
   if(S.kuld&&S.kuld.key===key){ kuldJoonista(); return; }
-  api('kuld',{p:S.p},function(r){ S.kuld={key:key,r:r}; if(S.view==='kuld') render(); },function(e){ var b=$('kuldBox'); if(b) b.innerHTML='<p class="empty">Kulla andmeid ei saanud laadida: '+esc(e.message||e)+'</p>'; });
+  var cc=null; try{ cc=JSON.parse(store('pf_kuld_'+key)||'null'); }catch(x){}
+  api('kuld',{p:S.p},function(r){ S.kuld={key:key,r:r}; try{ store('pf_kuld_'+key,JSON.stringify(r)); }catch(x){} if(S.view==='kuld'&&(S.p||'')===key) render(); },function(e){ if(S.kuld&&S.kuld.key===key){ toast('Kulla värskendus ebaõnnestus – näitan viimati laetud andmeid'); return; } var b=$('kuldBox'); if(b) b.innerHTML='<p class="empty">Kulla andmeid ei saanud laadida: '+esc(e.message||e)+'</p>'; });
+  if(cc){ S.kuld={key:key,r:cc,vana:true}; if(S.view==='kuld') render(); }   // vahemälust kohe, värske asendab
 }
 // Päevaread: kogus, investeeritud, väärtus €, kulla hind $ ja € (esimesest mündist tänaseni).
 function kuldSeeria(r){
@@ -855,7 +877,7 @@ function kuldStat(P,M){
 }
 function viewKuld(d){
   var h='';
-  if(!S.kuld||S.kuld.key!==(S.p||'')) return '<section class="sec"><div id="kuldBox"><p class="empty">Laen kulla andmeid…</p></div></section>';
+  if(!S.kuld||S.kuld.key!==(S.p||'')) return '<section class="sec"><div id="kuldBox"><p class="empty">Laen kulla andmeid'+lbTekst('kuld')+'</p></div></section>';
   var r=S.kuld.r, M=r.mundid||[];
   if(!M.length) return '<section class="sec"><p class="empty">Münte pole veel kirjas. Apps Scriptis käivita <b>PF_seadistaKuld</b>, kleebi Sheeti lehele „Kuld“ mündid (kuupäev, makstud hind €, nimetus, kaal oz) ja ava see vaade uuesti.</p></section>';
   var P=kuldSeeria(r), viim=P[P.length-1]||{}, oz=M.reduce(function(a,m){return a+m.oz;},0), inv=M.reduce(function(a,m){return a+m.eur;},0);
@@ -1649,7 +1671,7 @@ function render(d){
   if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='kuld') h+=viewKuld(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 26, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 27, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
   if(S.view==='kuld') kuldLae();
@@ -1678,8 +1700,11 @@ function fail(e){
 function setBusy(b){ S.busy=b; $('btnRefresh').classList.toggle('busy',b); }
 function load(p, tegevus){
   if(S.busy) return; setBusy(true);
-  if(!S.data) $('app').innerHTML='<div class="state">Laen andmeid…</div>';
   var soov=p||S.p||store('pf_p')||'';
+  // Konto vahetus / esimene avamine: näita kohe selles seadmes viimati laetud andmeid, värsked tulevad taustal.
+  if(apiUrl()&&soov&&(!S.data||S.data.valik!==soov&&S.data.portfell!==soov)){ var cc=null; try{ cc=JSON.parse(store('pf_last_'+soov)||'null'); }catch(x){}
+    if(cc&&(cc.pos||cc.koos)){ S.vana=''; render(cc); } }
+  if(!S.data) $('app').innerHTML='<div class="state">Laen andmeid'+lbTekst(tegevus||'andmed')+'</div>';
   api(tegevus||'andmed',{p:soov},function(d){ setBusy(false); S.vana=''; if(!S.demo){ store('pf_p',d.valik||d.portfell); store('pf_last_'+(d.valik||d.portfell),JSON.stringify(d)); } render(d); },
     function(e){ setBusy(false);
       // Võrguta või serveri vea korral näita viimati laetud andmeid, kui need on selles seadmes olemas.
