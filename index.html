@@ -52,7 +52,12 @@
   .btn.primary:disabled{opacity:.45;cursor:not-allowed}
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  .nav{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:22px}
+  .nav{display:flex;gap:18px;border-bottom:1px solid var(--line);margin-bottom:22px;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+  .nav::-webkit-scrollbar{display:none}
+  .nav button{flex:none}
+  #segKRange{display:flex;width:100%} #segKRange button{flex:1;padding:6px 2px}
+  .kmyndid{list-style:none;margin:0;padding:0} .kmynt{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft,var(--line))}
+  .kmynt small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px} .kmynt .r{text-align:right;white-space:nowrap}
   .nav button{border:0;background:none;color:var(--muted);padding:9px 0 10px;font-size:14.5px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
   .nav button[aria-pressed="true"]{color:var(--text);border-bottom-color:var(--gold)}
 
@@ -85,6 +90,7 @@
   .stats{display:grid;grid-template-columns:repeat(4,1fr);margin:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .stats > div{padding:14px 14px 14px 0}
   .stats > div + div{padding-left:14px;border-left:1px solid var(--line)}
+  .stats > div:nth-child(4n+1){padding-left:0;border-left:0} .stats > div:nth-child(n+5){border-top:1px solid var(--line)}
   .stats dt{color:var(--muted);font-size:12.5px;margin:0 0 3px}
   .stats dd{margin:0;font-size:19px;font-weight:600;letter-spacing:-.02em}
   .stats dd small{display:block;font-size:12.5px;font-weight:400;letter-spacing:0;color:var(--muted);margin-top:1px}
@@ -92,7 +98,7 @@
   .split b{color:var(--text);font-weight:500;margin-left:6px}
   @media (max-width:640px){
     .stats{grid-template-columns:repeat(2,1fr)}
-    .stats > div:nth-child(3){padding-left:0;border-left:0}
+    .stats > div:nth-child(odd){padding-left:0;border-left:0} .stats > div:nth-child(even){padding-left:14px;border-left:1px solid var(--line)}
     .stats > div:nth-child(n+3){border-top:1px solid var(--line)}
   }
 
@@ -393,6 +399,7 @@
   <div class="nav" id="nav">
     <button type="button" data-view="portfell" aria-pressed="true">Portfell</button>
     <button type="button" data-view="ulevaade" aria-pressed="false">Tootlus ja vara</button>
+    <button type="button" data-view="kuld" aria-pressed="false">Kuld</button>
     <button type="button" data-view="eesmark" aria-pressed="false">Eesmärk</button>
     <button type="button" data-view="seaded" aria-pressed="false">Seaded</button>
   </div>
@@ -801,6 +808,130 @@ function eeChips(){
   o.push([1.8,'VWRL 1,8%'],[4,'4% reegel'],[5.5,'Dividendifond 5,5%']);
   box.innerHTML=o.map(function(x){ return '<button type="button" data-eediv="'+String(x[0]).replace('.',',')+'" aria-pressed="'+(Math.abs(v-x[0])<0.05)+'">'+x[1]+'</button>'; }).join('');
 }
+// ---------- Kuld: mündid, väärtus ajas, kasum, kõikumised ----------
+S.kRange=(function(){ var r=store('pf_krange'); return ['30','90','180','ytd','365','all'].indexOf(r)>=0?r:'all'; })();
+S.kMode=(function(){ var r=store('pf_kmode'); return ['v','k','h'].indexOf(r)>=0?r:'v'; })();
+S.kValik=null;
+function kuldLae(){
+  var key=S.p||'';
+  if(S.kuld&&S.kuld.key===key){ kuldJoonista(); return; }
+  api('kuld',{p:S.p},function(r){ S.kuld={key:key,r:r}; if(S.view==='kuld') render(); },function(e){ var b=$('kuldBox'); if(b) b.innerHTML='<p class="empty">Kulla andmeid ei saanud laadida: '+esc(e.message||e)+'</p>'; });
+}
+// Päevaread: kogus, investeeritud, väärtus €, kulla hind $ ja € (esimesest mündist tänaseni).
+function kuldSeeria(r){
+  var M=r.mundid||[], aj=(r.ajalugu||[]).slice(); if(!M.length||!aj.length) return [];
+  if(r.hetk&&aj[aj.length-1].d<r.hetk.d) aj.push({d:r.hetk.d,u:r.hetk.u,e:r.hetk.e});
+  else if(r.hetk&&aj[aj.length-1].d===r.hetk.d) aj[aj.length-1]={d:r.hetk.d,u:r.hetk.u,e:r.hetk.e};
+  var out=[], j=0, oz=0, inv=0, alg=M[0].d, eel=null;
+  aj.forEach(function(p){
+    if(p.d<alg){ eel=p; return; }
+    var uus=[]; while(j<M.length&&M[j].d<=p.d){ oz+=M[j].oz; inv+=M[j].eur; uus.push(j); j++; }
+    out.push({d:p.d,oz:oz,inv:inv,v:oz*p.e,k:oz*p.e-inv,u:p.u,e:p.e,uus:uus});
+  });
+  // münt enne esimest hinnapäeva (nt nädalavahetusel): esimene punkt kannab selle
+  if(!out.length&&eel) out.push({d:eel.d,oz:0,inv:0,v:0,k:0,u:eel.u,e:eel.e,uus:[]});
+  return out;
+}
+function kuldVahemik(P){
+  if(!P.length) return P;
+  var last=ms(P[P.length-1].d);
+  if(S.kRange==='ytd'){ var y=P[P.length-1].d.slice(0,4); var a=P.filter(function(p){ return p.d.slice(0,4)===y; }); return a.length>1?a:P.slice(-2); }
+  var paevi={'30':30,'90':91,'180':182,'365':365}[S.kRange];
+  if(paevi){ var lim=last-paevi*864e5; var a2=P.filter(function(p){ return ms(p.d)>=lim; }); return a2.length>1?a2:P.slice(-2); }
+  return P;
+}
+function kuldStat(P,M){
+  var s={maxV:null,maxK:null,dd:0,ddD:null,tipp:null,kuud:[],vol:null};
+  P.forEach(function(p){ if(!s.maxV||p.v>s.maxV.v) s.maxV=p; if(!s.maxK||p.k>s.maxK.k) s.maxK=p; });
+  // hinnapõhised (€/oz) alates esimesest mündist: tipp, suurim langus, kuud, kõikumine
+  var hi=0, hiD=null, r=[];
+  P.forEach(function(p,i){ if(p.e>hi){ hi=p.e; hiD=p.d; } var d=p.e/hi-1; if(d<s.dd){ s.dd=d; s.ddD=p.d; } if(i) r.push(Math.log(p.e/P[i-1].e)); });
+  s.tipp={e:hi,d:hiD};
+  if(r.length>20){ var m=r.reduce(function(a,b){return a+b;},0)/r.length, v=r.reduce(function(a,b){return a+(b-m)*(b-m);},0)/(r.length-1); s.vol=Math.sqrt(v*252); }
+  var kuu={}; P.forEach(function(p){ kuu[p.d.slice(0,7)]=p.e; });
+  var kk=Object.keys(kuu).sort(); for(var i=1;i<kk.length;i++) s.kuud.push({m:kk[i],r:kuu[kk[i]]/kuu[kk[i-1]]-1});
+  s.parim=s.kuud.slice().sort(function(a,b){return b.r-a.r;})[0]; s.halvim=s.kuud.slice().sort(function(a,b){return a.r-b.r;})[0];
+  return s;
+}
+function viewKuld(d){
+  var h='';
+  if(!S.kuld||S.kuld.key!==(S.p||'')) return '<section class="sec"><div id="kuldBox"><p class="empty">Laen kulla andmeid…</p></div></section>';
+  var r=S.kuld.r, M=r.mundid||[];
+  if(!M.length) return '<section class="sec"><p class="empty">Münte pole veel kirjas. Apps Scriptis käivita <b>PF_seadistaKuld</b>, kleebi Sheeti lehele „Kuld“ mündid (kuupäev, makstud hind €, nimetus, kaal oz) ja ava see vaade uuesti.</p></section>';
+  var P=kuldSeeria(r), viim=P[P.length-1]||{}, oz=M.reduce(function(a,m){return a+m.oz;},0), inv=M.reduce(function(a,m){return a+m.eur;},0);
+  var v=r.hetk?oz*r.hetk.e:viim.v, kas=v-inv, st=kuldStat(P,M), pr=M.reduce(function(a,m){return a+(has(m.preemia)?m.preemia:0);},0), prTeada=M.some(function(m){return has(m.preemia);});
+  var kesk=inv/oz;
+  h+='<dl class="stats">'+
+    '<div><dt>Kulla väärtus</dt><dd>'+eur(v)+'<small>'+(S.peida?'••• oz':nf2.format(oz)+' oz · '+nf0.format(oz*UNTS_G)+' g')+' · '+M.length+' münti</small></dd></div>'+
+    '<div><dt>Kasum</dt><dd class="'+cls(kas)+'">'+eurS(kas)+'<small>'+pct(inv>0?kas/inv:null)+' makstust ('+eur(inv)+')</small></dd></div>'+
+    '<div><dt>Kulla hind</dt><dd>'+(r.hetk?nf0.format(Math.round(r.hetk.u))+' $/oz':'–')+'<small>'+(r.hetk?nf0.format(Math.round(r.hetk.e))+' €/oz'+(has(r.hetk.tanaPr)?' · <span class="'+cls(r.hetk.tanaPr)+'">'+pct(r.hetk.tanaPr)+' täna</span>':''):'')+'</small></dd></div>'+
+    '<div><dt>Keskmine ostuhind</dt><dd>'+(S.peida?PEIDA:nf0.format(Math.round(kesk))+' €/oz')+'<small>'+(r.hetk&&!S.peida?'turuhind '+pct(r.hetk.e/kesk-1)+' sellest':'koos preemiaga')+'</small></dd></div></dl>';
+  h+='<div class="chart-ctl">'+segHtml('segKMode',[['v','Väärtus €'],['k','Kasum €'],['h','Hind $']],S.kMode)+
+     segHtml('segKRange',[['30','30 p'],['90','3 k'],['180','6 k'],['ytd','YTD'],['365','1 a'],['all','Kõik']],S.kRange)+'</div>';
+  h+='<div id="kuldChart" class="chart"></div><div id="kuldLeg" class="legend"></div><div id="kuldValik"></div>';
+  var kuuN=function(m){ return KUUD[+m.slice(5)-1]+' '+m.slice(0,4); };
+  h+=fold('kstat','Tipud ja kõikumised','',
+    '<dl class="stats">'+
+    '<div><dt>Suurim väärtus</dt><dd>'+eur(st.maxV&&st.maxV.v)+'<small>'+(st.maxV?kp(st.maxV.d):'')+'</small></dd></div>'+
+    '<div><dt>Suurim kasum</dt><dd class="'+cls(st.maxK&&st.maxK.k)+'">'+eurS(st.maxK&&st.maxK.k)+'<small>'+(st.maxK?kp(st.maxK.d):'')+'</small></dd></div>'+
+    '<div><dt>Kulla tipp (€)</dt><dd>'+nf0.format(Math.round(st.tipp.e))+' €/oz<small>'+kp(st.tipp.d)+(r.hetk?' · praegu '+pct(r.hetk.e/st.tipp.e-1):'')+'</small></dd></div>'+
+    '<div><dt>Suurim langus</dt><dd class="down">'+pct(st.dd)+'<small>tipust, '+(st.ddD?kp(st.ddD):'–')+'</small></dd></div>'+
+    '<div><dt>Parim kuu</dt><dd class="up">'+(st.parim?pct(st.parim.r):'–')+'<small>'+(st.parim?kuuN(st.parim.m):'')+'</small></dd></div>'+
+    '<div><dt>Halvim kuu</dt><dd class="down">'+(st.halvim?pct(st.halvim.r):'–')+'<small>'+(st.halvim?kuuN(st.halvim.m):'')+'</small></dd></div>'+
+    '<div><dt>Kõikumine</dt><dd>'+(has(st.vol)?nf0.format(st.vol*100)+'%':'–')+'<small>aastas (päevamuutustest)</small></dd></div>'+
+    '<div><dt>Preemia kokku</dt><dd>'+(prTeada?eur(pr):'–')+'<small>'+(prTeada&&inv>0?pct(pr/inv)+' makstust üle turuhinna':'')+'</small></dd></div></dl>'+
+    '<p class="cmp-note">Tipp, langus, kuud ja kõikumine on kulla eurohinna põhjal alates esimesest mündist (ostud neid ei mõjuta). Preemia = makstud hind miinus kulla turuhind ostupäeval.</p>','');
+  var rows=M.slice().reverse().map(function(m){
+    var vt=r.hetk?m.oz*r.hetk.e:null, k=has(vt)&&m.eur>0?vt/m.eur-1:null;
+    return '<li class="kmynt"><div><b>'+esc(m.nimi)+'</b><small>'+kp(m.d)+' · '+(S.peida?'•••':nf2.format(m.oz))+' oz'+(has(m.preemia)&&m.eur>0?' · preemia '+pct(m.preemia/m.eur):'')+'</small></div>'+
+      '<div class="r">'+eur(vt)+'<small>'+eur(m.eur)+' → <span class="'+cls(k)+'">'+pct(k)+'</span></small></div></li>';
+  }).join('');
+  h+=fold('kmundid','Mündid',' <p>'+M.length+'</p>','<ul class="kmyndid">'+rows+'</ul><p class="cmp-note">Uue mündi lisamiseks kirjuta rida Sheeti lehele „Kuld“. Väärtus on kulla turuhinna järgi (tagasimüügil makstakse tavaliselt veidi vähem).</p>','');
+  return h;
+}
+function kuldJoonista(){
+  var box=$('kuldChart'); if(!box||!S.kuld) return;
+  var r=S.kuld.r, M=r.mundid||[], P=kuldVahemik(kuldSeeria(r)), lg=$('kuldLeg');
+  if(P.length<2){ box.innerHTML='<p class="empty">Selles vahemikus on liiga vähe andmeid.</p>'; lg.innerHTML=''; return; }
+  var W=box.clientWidth||340, H=W<520?220:260, m={t:22,b:24,l:0,r:0};
+  var md=S.kMode, ser=md==='v'?[{k:'v',c:'#d4a72c',n:'Väärtus'},{k:'inv',c:'var(--s-paid)',n:'Makstud'}]:md==='k'?[{k:'k',c:'#d4a72c',n:'Kasum'}]:[{k:'u',c:'#d4a72c',n:'Kulla hind $/oz'}];
+  var lo=Infinity,hi=-Infinity; P.forEach(function(p){ ser.forEach(function(s){ lo=Math.min(lo,p[s.k]); hi=Math.max(hi,p[s.k]); }); });
+  if(md==='k'){ lo=Math.min(lo,0); hi=Math.max(hi,0); }
+  var pad=(hi-lo||1)*0.08; lo-=pad; hi+=pad; if(md==='v'&&lo<0) lo=0;
+  var t0=ms(P[0].d), t1=ms(P[P.length-1].d);
+  var X=function(t){ return m.l+(t-t0)/(t1-t0||1)*(W-m.l-m.r); }, Y=function(v){ return m.t+(1-(v-lo)/(hi-lo))*(H-m.t-m.b); };
+  var fmt=function(v){ if(Math.abs(v)<1e-6) v=0; return md==='h'?nf0.format(v)+' $':S.peida?'•••':(Math.abs(v)>=10000?nf0.format(v/1000)+' tuh €':nf0.format(v)+' €'); };
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'" role="img" aria-label="Kulla '+(md==='v'?'väärtus ja makstud summa':md==='k'?'kasum':'hind')+' ajas, mündi märgid ostupäevadel">';
+  niceTicks(lo,hi,4).forEach(function(v){ var y=Y(v); if(y<m.t+6||y>H-m.b) return;
+    svg+='<line x1="0" x2="'+W+'" y1="'+y+'" y2="'+y+'" stroke="var(--line-soft)"/><text x="0" y="'+(y-5)+'" fill="var(--muted)" font-size="11.5">'+fmt(v)+'</text>'; });
+  var marks=[], days=(t1-t0)/864e5;
+  if(days>500){ for(var y=new Date(t0).getUTCFullYear()+1;y<=new Date(t1).getUTCFullYear();y++) marks.push({t:Date.UTC(y,0,1),l:String(y)}); }
+  else { var n=Math.min(5,P.length); for(var i=0;i<n;i++){ var q=P[Math.round(i*(P.length-1)/(n-1))]; marks.push({t:ms(q.d),l:kp(q.d,true)}); } }
+  var lastX=-99; marks.forEach(function(k){ var x=X(k.t); if(x-lastX<52||x>W-18) return; lastX=x; svg+='<text x="'+x+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11.5" text-anchor="'+(x<20?'start':'middle')+'">'+k.l+'</text>'; });
+  var path=function(k,step){ var s=''; P.forEach(function(p,i){ var x=X(ms(p.d)).toFixed(1), y=Y(p[k]).toFixed(1); s+=i?(step?'H'+x+'V'+y:'L'+x+' '+y):'M'+x+' '+y; }); return s; };
+  if(md==='v') svg+='<path d="'+path('v')+'L'+X(t1).toFixed(1)+' '+Y(lo).toFixed(1)+'L'+X(t0).toFixed(1)+' '+Y(lo).toFixed(1)+'Z" fill="#d4a72c" opacity=".12"/>';
+  if(md==='k') svg+='<line x1="0" x2="'+W+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="var(--muted)" stroke-dasharray="3 4"/>';
+  ser.slice().reverse().forEach(function(s){ svg+='<path d="'+path(s.k,s.k==='inv')+'" fill="none" stroke="'+s.c+'" stroke-width="'+(s.k==='inv'?1.6:2)+'"'+(s.k==='inv'?' stroke-dasharray="5 4"':'')+' stroke-linejoin="round"/>'; });
+  // mündid ostupäevadel (sama päeva mündid üks märk)
+  P.forEach(function(p){ if(!p.uus.length) return;
+    var x=X(ms(p.d)), y=Y(p[ser[0].k]), sel=S.kValik===p.d;
+    svg+='<g class="kmark" data-kd="'+p.d+'" style="cursor:pointer"><circle cx="'+x+'" cy="'+y+'" r="13" fill="transparent"/><circle cx="'+x+'" cy="'+y+'" r="'+(sel?7:5.5)+'" fill="#f5c542" stroke="#8a6a12" stroke-width="1.5"/>'+
+      (p.uus.length>1?'<text x="'+x+'" y="'+(y+3.5)+'" font-size="8.5" font-weight="700" text-anchor="middle" fill="#5a4405">'+p.uus.length+'</text>':'')+'</g>'; });
+  svg+='</svg>';
+  box.innerHTML=svg;
+  lg.innerHTML=ser.map(function(s){ return '<span><i style="background:'+s.c+'"></i>'+s.n+'</span>'; }).join('')+'<span><i style="background:#f5c542;border-radius:50%"></i>münt (vajuta)</span>';
+  kuldValikNaita();
+}
+function kuldValikNaita(){
+  var b=$('kuldValik'); if(!b||!S.kuld) return;
+  if(!S.kValik){ b.innerHTML=''; return; }
+  var r=S.kuld.r, M=(r.mundid||[]).filter(function(m){ return m.d===S.kValik; });
+  b.innerHTML=M.map(function(m){ var vt=r.hetk?m.oz*r.hetk.e:null, k=has(vt)&&m.eur>0?vt/m.eur-1:null;
+    return '<div class="range" style="margin-top:8px">🪙 <b style="color:var(--text);font-weight:500">'+esc(m.nimi)+'</b> · '+kp(m.d)+'<br>'+(S.peida?'•••':nf2.format(m.oz))+' oz, makstud '+eur(m.eur)+
+      (has(m.spotE)?' (turuhind siis '+nf0.format(Math.round(m.spotE))+' €/oz · '+nf0.format(Math.round(m.spotU))+' $/oz'+(has(m.preemia)&&m.eur>0?', preemia '+pct(m.preemia/m.eur):'')+')':'')+
+      '<br>Täna '+eur(vt)+' · <span class="'+cls(k)+'">'+pct(k)+'</span></div>'; }).join('');
+}
+
 function viewEesmark(d){
   var inp=function(id,lbl,ph){ return '<label>'+lbl+'<input id="'+id+'" inputmode="decimal" value="'+esc(store(eeKey(id))||'')+'" placeholder="'+esc(ph!==undefined?ph:EE_VAIK[id])+'"></label>'; };
   var h='<div id="eeTulem"></div>';
@@ -1494,6 +1625,9 @@ function viewSeaded(d){
         '<label class="sw"><span>Häirekell<small>ostusignaalid ja hoiatused sinu reeglite järgi</small></span><input type="checkbox" id="tTeemaH"'+(!tv.teemad||tv.teemad.hairekell!==false?' checked':'')+'><i></i></label>'+
         '<label class="sw"><span>Kalender<small>päev enne tulemusi ja ex-dividendi</small></span><input type="checkbox" id="tTeemaK"'+(!tv.teemad||tv.teemad.kalender!==false?' checked':'')+'><i></i></label>'+
         '<label class="sw"><span>Hinnad ei uuene<small>kui omatava tickeri hind on üle 3 tunni vana</small></span><input type="checkbox" id="tTeemaP"'+(!tv.teemad||tv.teemad.hinnad!==false?' checked':'')+'><i></i></label>'+
+        '<label class="sw"><span>Õhtune kokkuvõte<small>ntfy iga USA kauplemispäeva õhtul ~23: päeva muutus, S&amp;P, kuld, liikujad</small></span><input type="checkbox" id="tTeemaO"'+(!tv.teemad||tv.teemad.ohtu!==false?' checked':'')+'><i></i></label>'+
+        '<label class="sw"><span>Nädala kokkuvõte<small>laupäeval kell 10, e-kiri koos uudistega</small></span><input type="checkbox" id="tTeemaN"'+(!tv.teemad||tv.teemad.nadal!==false?' checked':'')+'><i></i></label>'+
+        '<label class="sw"><span>Kuu kokkuvõte<small>kuu viimasel kauplemispäeval, e-kiri koos uudistega</small></span><input type="checkbox" id="tTeemaM"'+(!tv.teemad||tv.teemad.kuu!==false?' checked':'')+'><i></i></label>'+
         '<div class="line"><span class="muted" style="font-size:13.5px;flex:1 1 150px">Puhver häirekella jaoks, € (raha, mille paned languse korral tööle)</span><input id="tPuhver" class="short" style="flex:0 0 100px" inputmode="numeric" value="'+esc(tv.puhver||'')+'" placeholder="0" aria-label="Puhver eurodes"></div>'+
         '<p style="margin:14px 0 2px;color:var(--text);font-size:14px">ntfy kanal</p>'+
         '<div class="line"><input id="tKanal" autocomplete="off" spellcheck="false" placeholder="'+(tv.kanal?'uus ntfy kanal (tühi = jääb endine)':'ntfy kanali nimi')+'" aria-label="ntfy kanal"></div>'+
@@ -1515,12 +1649,13 @@ function render(d){
   $('btnAdd').hidden=!!d.koos; $('app').classList.toggle('ro',!!d.koos);
   [].forEach.call($('nav').children,function(b){ b.setAttribute('aria-pressed',b.dataset.view===S.view); });
   var h=notes(d);
-  if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
+  if(S.view==='ulevaade') h+=viewYlevaade(d); else if(S.view==='kuld') h+=viewKuld(d); else if(S.view==='eesmark') h+=viewEesmark(d); else if(S.view==='seaded') h+=viewSeaded(d); else h+=viewPortfell(d);
   $('app').innerHTML=h;
   var kurss=Object.keys(d.kursid).map(function(k){ return '1 '+k+' = '+mkf(3,4).format(d.kursid[k])+' €'; }).join(', ');
-  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 22, serveri versioon '+(d.serveriVersioon||'vana')+'.';
+  $('foot').hidden=false; $('foot').textContent='Hinnad uuendatud '+(d.uuendatud||'–')+(kurss?'. Kurss: '+kurss:'')+'. Hinnad võivad olla kuni 15 minutit vanad.'+(function(){ var a=d.hinnaAllikad; if(!a) return ''; var n={Yahoo:'Yahoo',GitHub:'GitHub',Google:'Google Finance',puudub:'puudub'}, k=Object.keys(a); if(k.length===1&&k[0]==='Yahoo') return ' Allikas: Yahoo.'; return ' Allikad: '+k.map(function(x){ return (n[x]||x)+' '+a[x]; }).join(', ')+'.'; })()+' Äpi versioon 24, serveri versioon '+(d.serveriVersioon||'vana')+'.';
   if(S.view==='eesmark') eeUuenda();
   if(S.view==='ulevaade') liikLae();
+  if(S.view==='kuld') kuldLae();
   if(S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); drawTable(); if($('sihidBox')) $('sihidBox').innerHTML=sihidHtml(d); }
 }
 function fail(e){
@@ -1674,6 +1809,8 @@ document.addEventListener('click',function(ev){
     if(seg==='nav'){ S.view=b.dataset.view; if(S.data) render(); else if(S.view==='seaded') fail(new Error('Andmeid pole veel laetud.')); else load(); window.scrollTo(0,0); return; }
     if(seg==='segMode'){ S.mode=b.dataset.v; store('pf_mode',S.mode); render(); return; }
     if(seg==='segRange'){ S.range=b.dataset.v; store('pf_range',S.range); render(); return; }
+    if(seg==='segKMode'){ S.kMode=b.dataset.v; store('pf_kmode',S.kMode); render(); return; }
+    if(seg==='segKRange'){ S.kRange=b.dataset.v; store('pf_krange',S.kRange); render(); return; }
     if(seg==='segBm'){ S.bm=+b.dataset.v; S.mode='h'; render(); return; }
     if(seg==='segGrp'){ S.grp=b.dataset.v; store('pf_grp',S.grp); S.openG=null; render(); return; }
     if(seg==='segLiik'){ S.lRange=b.dataset.v; [].forEach.call(b.parentNode.children,function(x){ x.setAttribute('aria-pressed',x===b); }); liikLae(); return; }
@@ -1693,7 +1830,7 @@ document.addEventListener('click',function(ev){
       setBusy(true);
       if($('tKanal').value.trim()) $('tNtfy').checked=true;           // kanali sisestamine lülitab ntfy sisse
       var tq={pin:tp,p:S.p,email:$('tEmail').checked,ntfy:$('tNtfy').checked,kanal:$('tKanal').value.trim(),piir:$('tPiir').value.trim(),
-              teemad:{analyytikud:$('tTeemaA').checked,hairekell:$('tTeemaH').checked,kalender:$('tTeemaK').checked,hinnad:$('tTeemaP')?$('tTeemaP').checked:true},puhver:$('tPuhver').value.trim()};
+              teemad:{analyytikud:$('tTeemaA').checked,hairekell:$('tTeemaH').checked,kalender:$('tTeemaK').checked,hinnad:$('tTeemaP')?$('tTeemaP').checked:true,ohtu:$('tTeemaO')?$('tTeemaO').checked:true,nadal:$('tTeemaN')?$('tTeemaN').checked:true,kuu:$('tTeemaM')?$('tTeemaM').checked:true},puhver:$('tPuhver').value.trim()};
       var proov=b.id==='tProov', viga=function(e){ setBusy(false); toast(/Tundmatu tegevus/.test(e.message||'')?'Server on vana. Uuenda Apps Scripti kood ja tee New version.':(e.message||String(e))); };
       api('teavitus',tq,function(d){ if(!proov){ setBusy(false); render(d); toast(d.teade||'Salvestatud'); return; }
         S.data=d; api('teavitusProov',{pin:tp},function(r){ setBusy(false); S.tTulem='Proov: '+(r.teade||'saadetud'); render(); },viga); },viga); return; }
@@ -1739,6 +1876,8 @@ document.addEventListener('click',function(ev){
     return;
   }
   var sk=ev.target.closest('[data-sektor]'); if(sk){ S.varaValik=S.varaValik===sk.getAttribute('data-sektor')?null:sk.getAttribute('data-sektor'); render(); return; }
+  var km=S.view==='kuld'&&ev.target.closest&&ev.target.closest('.kmark');
+  if(km){ S.kValik=S.kValik===km.dataset.kd?null:km.dataset.kd; kuldJoonista(); return; }
   if(S.varaValik&&S.view==='ulevaade'&&ev.target.closest('.varagraaf')){ S.varaValik=null; render(); return; }
   if(ev.target.closest('[data-cash]')){ openForm('Jääk'); return; }
   var va=ev.target.closest('[data-vara-ava]'); if(va&&S.data&&S.data.koos) return;
@@ -1753,7 +1892,7 @@ $('frm').addEventListener('input',function(ev){ if(ev.target.id!=='iPin'&&ev.tar
 $('frm').addEventListener('submit',submitForm);
 $('konto').addEventListener('change',function(){ S.open=null; S.varaAva=null; S.varaValik=null; store('pf_p',this.value); load(this.value); });
 $('dlg').addEventListener('click',function(ev){ if(ev.target===$('dlg')) $('dlg').close(); });
-var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(function(){ if(S.data&&S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); } if(S.data&&S.view==='eesmark') eeGraaf(); if(S.data&&S.view==='ulevaade') liikLae(); if(S.data&&S.open) posAjLae(); },120); });
+var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(function(){ if(S.data&&S.view==='portfell'){ drawChart(); drawDay(); drawHeat(); } if(S.data&&S.view==='eesmark') eeGraaf(); if(S.data&&S.view==='ulevaade') liikLae(); if(S.data&&S.view==='kuld') kuldJoonista(); if(S.data&&S.open) posAjLae(); },120); });
 setInterval(function(){ if(!document.hidden&&S.data&&!$('dlg').open&&S.view!=='seaded') load(); },5*60*1000);
 // Avakuvale paigaldatav rakendus: ainult siis, kui leht tuleb oma veebiaadressilt (nt GitHub Pages), mitte Apps Scriptist ega failist.
 if(!INSIDE && location.protocol==='https:' || location.hostname==='localhost'){
